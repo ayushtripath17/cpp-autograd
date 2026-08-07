@@ -25,6 +25,8 @@
 #include <utility>
 #include <algorithm>
 #include <iostream>
+#include <cmath>
+#include <limits>
 
 #include "my_vector.hpp"
 #include "my_matrix.hpp"
@@ -257,6 +259,43 @@ public:
         return sum;
     }
 
+    Tensor operator+(const T& other) const {
+        Tensor sum = Tensor<T>();
+        sum.shape_ = this->shape_;
+        sum.strides_ = this->strides_;
+        sum.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            sum.data()[i] = data_[i] + other;
+        }
+        return sum;
+    }
+
+    Tensor operator-(const Tensor& other) const {
+        // TODO: same shape required.
+        if (shape_ != other.shape()) {
+            throw std::invalid_argument("Tensors must have the same shape.");
+        }
+        Tensor diff = Tensor<T>();
+        diff.shape_ = this->shape_;
+        diff.strides_ = this->strides_;
+        diff.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            diff.data()[i] = data_[i] - other.data()[i];
+        }
+        return diff;
+    }
+
+    Tensor operator-(const T& other) const {
+        Tensor diff = Tensor<T>();
+        diff.shape_ = this->shape_;
+        diff.strides_ = this->strides_;
+        diff.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            diff.data()[i] = data_[i] - other;
+        }
+        return diff;
+    }
+
     void operator+=(const Tensor& other) {
         if (shape_ != other.shape()) {
             throw std::invalid_argument("Tensors must have the same shape.");
@@ -264,6 +303,16 @@ public:
 
         for (std::size_t i = 0; i < data_.size(); i++) {
             this->data_[i] = data_[i] + other.data()[i];
+        }
+    } 
+
+    void operator-=(const Tensor& other) {
+        if (shape_ != other.shape()) {
+            throw std::invalid_argument("Tensors must have the same shape.");
+        }
+
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            this->data_[i] = data_[i] - other.data()[i];
         }
     } 
 
@@ -281,6 +330,92 @@ public:
         }
         return prod;
     }
+
+    Tensor operator*(const T& other) const {
+        Tensor prod = Tensor<T>();
+        prod.shape_ = this->shape_;
+        prod.strides_ = this->strides_;
+        prod.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            prod.data()[i] = data_[i] * other;
+        }
+        return prod;
+    }
+
+    Tensor operator/(const Tensor& other) const {
+        // TODO: same shape required.
+        if (shape_ != other.shape()) {
+            throw std::invalid_argument("Tensors must have the same shape.");
+        }
+        Tensor q = Tensor<T>();
+        q.shape_ = this->shape_;
+        q.strides_ = this->strides_;
+        q.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            q.data()[i] = data_[i] / other.data()[i];
+        }
+        return q;
+    }
+
+    Tensor operator/(const T& other) const {
+        Tensor q = Tensor<T>();
+        q.shape_ = this->shape_;
+        q.strides_ = this->strides_;
+        q.data_ = Vector<T>(size());
+        for (std::size_t i = 0; i < data_.size(); i++) {
+            q.data()[i] = data_[i] / other;
+        }
+        return q;
+    }
+
+    static Tensor sqrt(const Tensor& n) {
+        Tensor q = Tensor<T>();
+        q.shape_ = n.shape_;
+        q.strides_ = n.strides_;
+        q.data_ = Vector<T>(n.size());
+
+        for (std::size_t i = 0; i < q.data_.size(); i++) {
+            q.data_[i] = std::pow(n.data_[i], 0.5);
+        }
+        return q;
+    }
+
+    static Tensor exp(const Tensor& n) {
+        Tensor e = Tensor<T>(n.shape());
+        for (std::size_t i = 0; i < e.size(); i++) {
+            e.data_[i] = std::exp(n.data_[i]);
+        }
+        return e;
+    }
+
+    static Tensor log(const Tensor& n) {
+        Tensor l = Tensor<T>(n.shape());
+        for (std::size_t i = 0; i < l.size(); i++) {
+            l.data_[i] = std::log(n.data_[i]);
+        }
+        return l;
+    }
+
+    static Tensor softmax(const Tensor& n) {
+        Tensor output = Tensor<T>(n.shape());
+        std::size_t last = n.strides_[n.ndim() - 1];
+        for (std::size_t i = 0; i < output.size(); i += last) {
+            int row_s = 0;
+            int maximum = std::numeric_limits<int>::min();
+            for (std::size_t j = 0; j < i + last; j++) {
+                maximum = std::max(maximum, n.data_[j]);
+            }
+            for (std::size_t j = i; j < i + last; j++) {
+                output.data_[j] = std::exp(n.data_[j] - maximum);
+                row_s += output.data_[j];
+            }
+            for (std::size_t j = i; j < i + last; j++) {
+                output.data_[j] /= row_s;
+            }
+        }
+        return output;
+    }
+
 
     // --- Batched matmul (important for DL) ---
     //

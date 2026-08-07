@@ -125,15 +125,14 @@ float train(learn::Sequential& model,
     for (int i = 0; i < epochs; i++) {
         opt.zero_grad();
 
-        std::vector<std::shared_ptr<learn::Variable>> all_nodes = model.forward(x);
-        learn::Variable& pred = *(all_nodes[all_nodes.size() - 1]);
+        std::shared_ptr<learn::Variable> pred = model.forward(x);
         auto loss = mse_loss(pred, y);
 
+        // std::cout << loss->data().at({0}) << std::endl;
         learn::backward(*loss);
         opt.step();
     }
-    std::vector<std::shared_ptr<learn::Variable>> all_nodes = model.forward(x);
-    learn::Variable& final_pred = *all_nodes[all_nodes.size() - 1];
+    std::shared_ptr<learn::Variable> final_pred = model.forward(x);
     return learn::mse_loss(final_pred, y)->data().at({0});  // stub — replace
 }
 
@@ -165,8 +164,8 @@ void test_xor_predictions() {
     //   CHECK_NEAR(pred.at({0, 0}), 0.f, 0.2f);
     //   CHECK_NEAR(pred.at({1, 0}), 1.f, 0.2f);
     //   ...
-    std::vector<std::shared_ptr<learn::Variable>> all_nodes = model.forward(data.x);
-    learn::Tensor<float>& pred = all_nodes[all_nodes.size() - 1]->data();
+    std::shared_ptr<learn::Variable> test_pred = model.forward(data.x);
+    learn::Tensor<float> pred = test_pred->data();
     CHECK_NEAR(pred.at({0, 0}), 0.f, 0.2f);
     CHECK_NEAR(pred.at({1, 0}), 1.f, 0.2f);
     CHECK_NEAR(pred.at({2, 0}), 1.f, 0.2f);
