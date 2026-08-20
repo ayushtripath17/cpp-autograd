@@ -496,13 +496,24 @@ public:
     Linear(std::size_t in_features, std::size_t out_features)
         : W_(std::make_shared<Variable>(TensorF({in_features, out_features}), true)),
           b_(std::make_shared<Variable>(TensorF({out_features}), true)) {
-
-        // TODO: fill W_ and b_ with small random values (or a fixed seed).
+        
+        double limit = sqrt(6 / (in_features + out_features));
         std::random_device rd; 
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> distr(-0.5, 0.5);
+        std::uniform_real_distribution<float> distr(-1 * limit, limit);
         for (std::size_t i = 0; i < W_->data().size(); i++) {
             W_->data().data()[i] = distr(gen);
+        }
+    }
+
+    Linear(std::size_t in_features, std::size_t out_features, std::mt19937& rng)
+        : W_(std::make_shared<Variable>(TensorF({in_features, out_features}), true)),
+          b_(std::make_shared<Variable>(TensorF({out_features}), true)) {
+        
+        double limit = sqrt(6 / (in_features + out_features));
+        std::uniform_real_distribution<float> distr(-1 * limit, limit);
+        for (std::size_t i = 0; i < W_->data().size(); i++) {
+            W_->data().data()[i] = distr(rng);
         }
     }
 
@@ -526,6 +537,7 @@ private:
 
 class Sequential {
 public:
+
     template <typename LayerT>
     void add(LayerT layer) {
         // TODO: store layer for forward/parameters.
