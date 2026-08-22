@@ -31,6 +31,8 @@ void run_test(const char* name, void (*test)()) {
         }                                                                    \
     } while (0)
 
+#define CHECK_NEAR(a, b, eps) CHECK(std::fabs((a) - (b)) < (eps))
+
 template <typename Fn>
 bool throws_exception(Fn&& fn) {
     try {
@@ -351,6 +353,116 @@ void test_matmul_shape_mismatch() {
     CHECK(throws_exception([&] { (void)a.matmul(b); }));
 }
 
+void test_softmax_1d_known_values() {
+    // Softmax([1, 2, 3]) has a closed form after subtracting max=3.
+    learn::Tensor<float> x({3}, {1.f, 2.f, 3.f});
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+
+    const float e0 = std::exp(1.f - 3.f);
+    const float e1 = std::exp(2.f - 3.f);
+    const float e2 = std::exp(3.f - 3.f);
+    const float z = e0 + e1 + e2;
+
+    CHECK(y.ndim() == 1);
+    CHECK(y.size() == 3);
+    CHECK_NEAR(y.at({0}), e0 / z, 1e-5f);
+    CHECK_NEAR(y.at({1}), e1 / z, 1e-5f);
+    CHECK_NEAR(y.at({2}), e2 / z, 1e-5f);
+    CHECK_NEAR(y.at({0}) + y.at({1}) + y.at({2}), 1.f, 1e-5f);
+}
+
+void test_softmax_2d_rows_sum_to_one() {
+    learn::Tensor<float> x({2, 3}, {1.f, 2.f, 3.f, 0.f, -1.f, 2.f});
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+
+    CHECK(y.shape()[0] == 2);
+    CHECK(y.shape()[1] == 3);
+    for (std::size_t r = 0; r < 2; ++r) {
+        float row_sum = 0.f;
+        for (std::size_t c = 0; c < 3; ++c) {
+            row_sum += y.at({r, c});
+            CHECK(y.at({r, c}) > 0.f);
+        }
+        CHECK_NEAR(row_sum, 1.f, 1e-5f);
+    }
+}
+
+void test_softmax_3d_last_axis() {
+    // Shape (2, 2, 3): softmax over the last axis independently for each (b, i, :).
+    learn::Tensor<float> x({2, 2, 3}, {
+        1.f, 2.f, 3.f,
+        0.f, 0.f, 0.f,
+        -1.f, 0.f, 1.f,
+        5.f, 5.f, 5.f
+    });
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+
+    CHECK(y.ndim() == 3);
+    CHECK(y.shape()[0] == 2);
+    CHECK(y.shape()[1] == 2);
+    CHECK(y.shape()[2] == 3);
+
+    for (std::size_t b = 0; b < 2; ++b) {
+        for (std::size_t i = 0; i < 2; ++i) {
+            float slice_sum = 0.f;
+            for (std::size_t j = 0; j < 3; ++j) {
+                slice_sum += y.at({b, i, j});
+                CHECK(y.at({b, i, j}) > 0.f);
+            }
+            CHECK_NEAR(slice_sum, 1.f, 1e-5f);
+        }
+    }
+
+    // Equal logits along last axis -> uniform probabilities.
+    CHECK_NEAR(y.at({0, 1, 0}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({0, 1, 1}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({0, 1, 2}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({1, 1, 0}), 1.f / 3.f, 1e-5f);
+}
+
+void test_softmax_large_values_stable() {
+    learn::Tensor<float> x({3}, {1000.f, 1001.f, 1002.f});
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+
+    for (std::size_t i = 0; i < y.size(); ++i) {
+        CHECK(std::isfinite(y.data()[i]));
+        CHECK(!std::isnan(y.data()[i]));
+        CHECK(y.data()[i] > 0.f);
+    }
+    CHECK_NEAR(y.at({0}) + y.at({1}) + y.at({2}), 1.f, 1e-5f);
+
+    // Same relative gaps as softmax([0, 1, 2]).
+    const float e0 = std::exp(0.f);
+    const float e1 = std::exp(1.f);
+    const float e2 = std::exp(2.f);
+    const float z = e0 + e1 + e2;
+    CHECK_NEAR(y.at({0}), e0 / z, 1e-5f);
+    CHECK_NEAR(y.at({1}), e1 / z, 1e-5f);
+    CHECK_NEAR(y.at({2}), e2 / z, 1e-5f);
+}
+
+void test_softmax_translation_invariance() {
+    learn::Tensor<float> x({3}, {1.f, 2.f, 3.f});
+    learn::Tensor<float> shifted({3}, {1001.f, 1002.f, 1003.f});  // x + 1000
+
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+    learn::Tensor<float> y_shift = learn::Tensor<float>::softmax(shifted);
+
+    CHECK_NEAR(y.at({0}), y_shift.at({0}), 1e-5f);
+    CHECK_NEAR(y.at({1}), y_shift.at({1}), 1e-5f);
+    CHECK_NEAR(y.at({2}), y_shift.at({2}), 1e-5f);
+}
+
+void test_softmax_equal_values() {
+    learn::Tensor<float> x({3}, {5.f, 5.f, 5.f});
+    learn::Tensor<float> y = learn::Tensor<float>::softmax(x);
+
+    CHECK_NEAR(y.at({0}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({1}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({2}), 1.f / 3.f, 1e-5f);
+    CHECK_NEAR(y.at({0}) + y.at({1}) + y.at({2}), 1.f, 1e-5f);
+}
+
 }  // namespace
 
 int main() {
@@ -388,6 +500,12 @@ int main() {
     run_test("test_matmul_two_batches", test_matmul_two_batches);
     run_test("test_add_shape_mismatch", test_add_shape_mismatch);
     run_test("test_matmul_shape_mismatch", test_matmul_shape_mismatch);
+    run_test("test_softmax_1d_known_values", test_softmax_1d_known_values);
+    run_test("test_softmax_2d_rows_sum_to_one", test_softmax_2d_rows_sum_to_one);
+    run_test("test_softmax_3d_last_axis", test_softmax_3d_last_axis);
+    run_test("test_softmax_large_values_stable", test_softmax_large_values_stable);
+    run_test("test_softmax_translation_invariance", test_softmax_translation_invariance);
+    run_test("test_softmax_equal_values", test_softmax_equal_values);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 

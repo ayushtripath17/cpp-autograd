@@ -285,9 +285,12 @@ inline std::shared_ptr<Variable> relu(std::shared_ptr<Variable>& x) {
 // ---------------------------------------------------------------------------
 
 inline std::shared_ptr<Variable> mse_loss(std::shared_ptr<Variable>& pred, Variable& target) {
-    // TODO: forward — mean of (pred - target)^2; store as 1-element or scalar tensor.
-    // TODO: backward w.r.t. pred — 2 * (pred - target) / n  (n = num elements).
-    //       target is usually a leaf with requires_grad = false.
+    // forward — mean of (pred - target)^2; store as 1-element or scalar tensor.
+    // backward w.r.t. pred — 2 * (pred - target) / n  (n = num elements).
+    // target is usually a leaf with requires_grad = false.
+
+    if (pred->data_.shape() != target.data_.shape()) throw std::invalid_argument("Prediction and target must have matching shapes.");
+
     float total = 0.f;
     for (std::size_t i = 0; i < pred->data_.size(); i++) {
         total += (pred->data_.data()[i] - target.data_.data()[i]) * (pred->data_.data()[i] - target.data_.data()[i]);
@@ -295,12 +298,13 @@ inline std::shared_ptr<Variable> mse_loss(std::shared_ptr<Variable>& pred, Varia
     float avg = total / pred->data_.size();
 
     auto out = std::make_shared<Variable>(Variable(TensorF({1}, avg), pred->requires_grad_));
+    TensorF target_data = target.data_;
     if (!out->requires_grad_) return out;
 
     out->parents_ = {pred};
-    out->backward_fn_ = [pred_ptr = pred.get(), &target]() {
+    out->backward_fn_ = [pred_ptr = pred.get(), out_ptr = out.get(), target_data = std::move(target_data)]() {
         for (std::size_t i = 0; i < pred_ptr->data_.size(); i++) {
-            pred_ptr->grad_.data()[i] += 2 * (pred_ptr->data_.data()[i] - target.data_.data()[i]) / pred_ptr->data_.size();
+            pred_ptr->grad_.data()[i] += out_ptr->grad_.data()[0] * (2 * (pred_ptr->data_.data()[i] - target_data.data()[i]) / pred_ptr->data_.size());
         }
     };
     

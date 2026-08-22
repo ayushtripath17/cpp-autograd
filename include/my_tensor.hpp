@@ -425,11 +425,11 @@ public:
 
     static Tensor softmax(const Tensor& n) {
         Tensor output = Tensor<T>(n.shape());
-        std::size_t last = n.strides_[n.ndim() - 1];
+        std::size_t last = n.shape_[n.ndim() - 1];
         for (std::size_t i = 0; i < output.size(); i += last) {
-            int row_s = 0;
-            int maximum = std::numeric_limits<int>::min();
-            for (std::size_t j = 0; j < i + last; j++) {
+            T row_s = T(0);
+            T maximum = n.data_[i];
+            for (std::size_t j = i; j < i + last; j++) {
                 maximum = std::max(maximum, n.data_[j]);
             }
             for (std::size_t j = i; j < i + last; j++) {
