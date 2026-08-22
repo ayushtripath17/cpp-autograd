@@ -18,59 +18,38 @@
 #include <initializer_list>
 #include <stdexcept>
 #include <utility>
+#include <new>
+#include <optional>
 
 namespace learn {
 
 template <typename T>
 class Vector {
-public:
-    // --- Construction / destruction ---
 
-    Vector() : data_(nullptr), size_(0), capacity_(0) {}
+private:
+    T* data_;
+    std::size_t size_;
+    std::size_t capacity_;
 
-    explicit Vector(std::size_t count) : data_(nullptr), size_(0), capacity_(0) {
-        // TODO: allocate storage for `count` default-constructed elements.
-        // Set size_ and capacity_ accordingly.
-        
-        size_ = count;
-        capacity_ = 2;
-        while (capacity_ <= count) {
-            capacity_ *= 2;
-        }
-        void* raw = ::operator new(capacity_ * sizeof(T));
-        data_ = static_cast<T*>(raw);
-        for (std::size_t i = 0; i < count; i++) {
-            new (data_ + i) T();
-        }
-    
-    }
-
-    Vector(std::size_t count, const T& value) : data_(nullptr), size_(0), capacity_(0) {
-        // TODO: allocate and fill with `value`.
-        size_ = count;
-        capacity_ = 2;
-        while (capacity_ <= count) {
-            capacity_ *= 2;
-        }
-        void* raw = ::operator new(capacity_ * sizeof(T));
-        data_ = static_cast<T*>(raw);
-        for (std::size_t i = 0; i < count; i++) {
-            new (data_ + i) T(value);
-        }
-    }
-
-    Vector(std::initializer_list<T> init) : data_(nullptr), size_(0), capacity_(0) {
-        // TODO: allocate and copy elements from init.
-        size_ = init.size();
-        capacity_ = 2;
-        while (capacity_ <= size_) {
-            capacity_ *= 2;
-        }
-        void* raw = ::operator new(capacity_ * sizeof(T));
-        data_ = static_cast<T*>(raw);
+    void destroy_elements() noexcept {
         for (std::size_t i = 0; i < size_; i++) {
-            new (data_ + i) T(*(init.begin() + i));
+            data_[i].~T();
         }
+        size_ = 0; 
+    }
+
+    void reallocate(std::size_t new_capacity) {
+        // allocate new block, move existing elements, free old block.
+        
+        void* raw = ::operator new(new_capacity * sizeof(T));
+        T* temp = static_cast<T*>(raw);
+        for (std::size_t i = 0; i < size_; i++) {
+            new (temp + i) T(std::move(data_[i]));
+            data_[i].~T();
+        }
+        ::operator delete(data_);
+        data_ = temp;
+        capacity_ = new_capacity;
     }
 
     void release_resources() noexcept {
@@ -84,12 +63,60 @@ public:
         capacity_ = 0;
     }
 
+public:
+    // --- Construction / destruction ---
+
+    Vector() : data_(nullptr), size_(0), capacity_(0) {}
+
+    explicit Vector(std::size_t count) : data_(nullptr), size_(0), capacity_(0) {
+        // allocate storage for `count` default-constructed elements.
+        // set size_ and capacity_ accordingly.
+        
+        size_ = count;
+        capacity_ = 1;
+        while (capacity_ <= count) {
+            capacity_ *= 2;
+        }
+        void* raw = ::operator new(capacity_ * sizeof(T));
+        data_ = static_cast<T*>(raw);
+        for (std::size_t i = 0; i < count; i++) {
+            new (data_ + i) T();
+        }
+    }
+
+    Vector(std::size_t count, const T& value) : data_(nullptr), size_(0), capacity_(0) {
+        size_ = count;
+        capacity_ = 1;
+        while (capacity_ <= count) {
+            capacity_ *= 2;
+        }
+        void* raw = ::operator new(capacity_ * sizeof(T));
+        data_ = static_cast<T*>(raw);
+        for (std::size_t i = 0; i < count; i++) {
+            new (data_ + i) T(value);
+        }
+    }
+
+    Vector(std::initializer_list<T> init) : data_(nullptr), size_(0), capacity_(0) {
+        size_ = init.size();
+        capacity_ = 1;
+        while (capacity_ <= size_) {
+            capacity_ *= 2;
+        }
+        void* raw = ::operator new(capacity_ * sizeof(T));
+        data_ = static_cast<T*>(raw);
+        for (std::size_t i = 0; i < size_; i++) {
+            new (data_ + i) T(*(init.begin() + i));
+        }
+    }
+
     ~Vector() {
         release_resources();
     }
 
     Vector(const Vector& other) : data_(nullptr), size_(0), capacity_(0) {
-        // TODO: deep copy — allocate new storage and copy other's elements.
+        // deep copy — allocates new storage and copy other's elements.
+
         size_ = other.size();
         capacity_ = other.capacity();
         void* raw = ::operator new(capacity_ * sizeof(T));
@@ -101,8 +128,6 @@ public:
     }
 
     Vector& operator=(const Vector& other) {
-        // TODO: deep copy. Handle self-assignment (if (this == &other) return *this).
-        // Tip: consider destroy + reallocate, or copy-and-swap.
         if (this == &other) {
             return *this;
         }
@@ -120,41 +145,26 @@ public:
         return *this;
     }
 
-    void set_data(T* newdata_) {
-        data_ = newdata_;
-    }
-
-    void set_size(std::size_t new_size) {
-        size_ = new_size;
-    }
-
-    void set_capacity(std::size_t new_capacity) {
-        capacity_ = new_capacity;
-    }
-
-    // Add `noexcept` once implemented.
     Vector(Vector&& other) noexcept 
         : data_(other.data()), size_(other.size()), capacity_(other.capacity()) {
         // TODO: steal other's resources; leave other in a valid empty state.
-        other.set_data(nullptr);
-        other.set_size(0);
-        other.set_capacity(0);
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
     }
 
     Vector& operator=(Vector&& other) noexcept {
-        // TODO: free current resources, steal from other, leave other empty.
-        // Handle self-assignment.
         if (this == &other) {
             return *this;
         }
         release_resources();
-        data_ = other.data();
-        size_ = other.size();
-        capacity_ = other.capacity();
+        data_ = other.data_;
+        size_ = other.size_;
+        capacity_ = other.capacity_;
 
-        other.set_data(nullptr);
-        other.set_size(0);
-        other.set_capacity(0);
+        other.data_ = nullptr;
+        other.size_ = 0;
+        other.capacity_ = 0;
         return *this;
     }
 
@@ -162,7 +172,7 @@ public:
 
     T& operator[](std::size_t index) {
         // TODO: bounds check optional for learning; tests use valid indices.
-        if (index < 0 || index >= size_) {
+        if (index >= size_) {
             throw std::invalid_argument("Invalid index.");
         }
 
@@ -170,7 +180,7 @@ public:
     }
 
     const T& operator[](std::size_t index) const {
-        if (index < 0 || index >= size_) {
+        if (index >= size_) {
             throw std::invalid_argument("Invalid index.");
         }
 
@@ -206,118 +216,81 @@ public:
     }
 
     void resize(std::size_t new_size) {
-        // TODO: grow or shrink. New elements are default-constructed.
-        capacity_ = new_size * 2;
-        void* raw = ::operator new(capacity_ * sizeof(T));
-        T* temp = static_cast<T*>(raw);
-        for (std::size_t i = 0; i < new_size; i++) {
-            if (i < size_) {
-                new (temp + i) T(std::move(data_[i]));
+        if (size_ == new_size) return;
+
+        if (size_ < new_size) {
+            if (capacity_ < new_size) reallocate(new_size * 2);
+            for (std::size_t i = size_; i < new_size; i++) {
+                new (data_ + i) T();
+            }
+        } else if (size_ > new_size) {
+            for (std::size_t i = new_size; i < size_; i++) {
                 data_[i].~T();
-            } else {
-                new (temp + i) T();
             }
         }
-
-        ::operator delete(data_);
-        data_ = temp;
         size_ = new_size;
     }
 
     void resize(std::size_t new_size, const T& value) {
-        // TODO: grow or shrink. New elements are copies of `value`.
-        capacity_ = new_size * 2;
-        void* raw = ::operator new(capacity_ * sizeof(T));
-        T* temp = static_cast<T*>(raw);
-        for (std::size_t i = 0; i < new_size; i++) {
-            if (i < size_) {
-                new (temp + i) T(std::move(data_[i]));
+        if (size_ == new_size) return;
+        
+        if (size_ < new_size) {
+            std::optional<T> temp_copy = std::nullopt;
+            if (capacity_ < new_size) {
+                temp_copy = value;
+                reallocate(new_size * 2);
+            }
+            for (std::size_t i = size_; i < new_size; i++) {
+                if (temp_copy.has_value()) new (data_ + i) T(temp_copy.value());
+                else new (data_ + i) T(value);
+            }
+        } else if (size_ > new_size) {
+            for (std::size_t i = new_size; i < size_; i++) {
                 data_[i].~T();
-            } else {
-                new (temp + i) T(value);
             }
         }
-        ::operator delete(data_);
-        data_ = temp;
         size_ = new_size;
     }
 
     // --- Modifiers ---
 
     void push_back(const T& value) {
-        // TODO: reallocate if size_ == capacity_, then construct new element at end.
-        if (capacity_ == 0) {
-            reallocate(2);
-        }
-
-        new (data_ + size_) T(value);
-        size_ += 1;
-
+        std::optional<T> temp_copy = std::nullopt;
         if (size_ == capacity_) {
-            reallocate(size_ * 2);
+            std::size_t new_size = size_ == 0 ? 2 : size_ * 2;
+            temp_copy = value;
+            reallocate(new_size);
         }
+        if (temp_copy.has_value()) new (data_ + size_) T(temp_copy.value());
+        else new (data_ + size_) T(value);
+        
+        size_ += 1;
     }
 
     void push_back(T&& value) {
-        // TODO: same as above, but move-construct the new element.
-        if (capacity_ == 0) {
-            reallocate(2);
-        }
-
-        new (data_ + size_) T(std::move(value));
-        size_ += 1;
-
+        std::optional<T> temp_copy = std::nullopt;
         if (size_ == capacity_) {
-            reallocate(size_ * 2);
+            std::size_t new_size = size_ == 0 ? 2 : size_ * 2;
+            temp_copy = std::move(value);
+            reallocate(new_size);
         }
+        if (temp_copy.has_value()) new (data_ + size_) T(std::move(temp_copy.value()));
+        else new (data_ + size_) T(std::move(value));
+        
+        size_ += 1;
     }
 
     void pop_back() {
-        // TODO: destroy last element and decrement size_. No-op if empty.
         if (size_ == 0) return;
-
         size_ -= 1;
         data_[size_].~T();
-
-        if (size_ * 4 <= capacity_) {
-            capacity_ /= 2;
-        }
     }
 
     void clear() noexcept {
-        // TODO: destroy all elements; size_ = 0; keep capacity_ unchanged.
+        // destroys all elements; size_ = 0; keeps capacity_ unchanged.
         destroy_elements();
     }
 
-private:
-    T* data_;
-    std::size_t size_;
-    std::size_t capacity_;
-
-    void destroy_elements() noexcept {
-        // TODO: call destructors for elements in [0, size_) if needed.
-        // For trivial types this may be a no-op, but write it generically
-        // using a loop and explicit destructor calls, or std::destroy_n in C++17.
-        for (std::size_t i = 0; i < size_; i++) {
-            data_[i].~T();
-        }
-        size_ = 0;
-        
-    }
-
-    void reallocate(std::size_t new_capacity) {
-        // TODO: allocate new block, move existing elements, free old block.
-        
-        void* raw = ::operator new(new_capacity * sizeof(T));
-        T* temp = static_cast<T*>(raw);
-        for (std::size_t i = 0; i < size_; i++) {
-            new (temp + i) T(std::move(data_[i]));
-            data_[i].~T();
-        }
-        ::operator delete(data_);
-        data_ = temp;
-        capacity_ = new_capacity;
-    }
 };
 
 }  // namespace learn

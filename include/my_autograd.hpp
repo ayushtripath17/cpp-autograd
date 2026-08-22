@@ -116,9 +116,9 @@ inline std::shared_ptr<Variable> add(std::shared_ptr<Variable>& a, std::shared_p
     if (!out->requires_grad()) return out;
     out->parents_ = {a, b};
     
-    out->backward_fn_ = [a, b, out]() {
-        if (a->requires_grad_) a->grad_ += out->grad_;
-        if (b->requires_grad_) b->grad_ += out->grad_;
+    out->backward_fn_ = [a_ptr = a.get(), b_ptr = b.get(), out_ptr = out.get()]() {
+        if (a_ptr->requires_grad_) a_ptr->grad_ += out_ptr->grad_;
+        if (b_ptr->requires_grad_) b_ptr->grad_ += out_ptr->grad_;
     };
 
     return out;
@@ -130,9 +130,9 @@ inline std::shared_ptr<Variable> sub(std::shared_ptr<Variable>& a, std::shared_p
     if (!out -> requires_grad()) return out;
     
     out->parents_ = {a, b};
-    out->backward_fn_ = [a, b, out]() {
-        if (a->requires_grad()) a->grad_ += out->grad_;
-        if (b->requires_grad()) b->grad_ -= out->grad_;
+    out->backward_fn_ = [a_ptr = a.get(), b_ptr = b.get(), out_ptr = out.get()]() {
+        if (a_ptr->requires_grad()) a_ptr->grad_ += out_ptr->grad_;
+        if (b_ptr->requires_grad()) b_ptr->grad_ -= out_ptr->grad_;
     };
 
     return out;
@@ -147,8 +147,8 @@ inline std::shared_ptr<Variable> neg(std::shared_ptr<Variable>& a) {
     if (!out->requires_grad()) return out;
 
     out->parents_ = {a};
-    out->backward_fn_ = [a, out]() {
-        a->grad_ -= out->grad_;
+    out->backward_fn_ = [a_ptr = a.get(), out_ptr = out.get()]() {
+        a_ptr->grad_ -= out_ptr->grad_;
     };
 
     return out;
@@ -164,9 +164,9 @@ inline std::shared_ptr<Variable> sum(std::shared_ptr<Variable>& a) {
     if (!out->requires_grad()) return out;
 
     out->parents_ = {a};
-    out->backward_fn_ = [a, out]() {
-        for (std::size_t i = 0; i < a->data().size(); i++) {
-            a->grad().data()[i] += out->grad().data()[0];
+    out->backward_fn_ = [a_ptr = a.get(), out_ptr = out.get()]() {
+        for (std::size_t i = 0; i < a_ptr->data().size(); i++) {
+            a_ptr->grad().data()[i] += out_ptr->grad().data()[0];
         }
     };
 
@@ -190,12 +190,12 @@ inline std::shared_ptr<Variable> broadcast_add(std::shared_ptr<Variable>& a, std
     if (!out->requires_grad()) return out;
     
     out->parents_ = {a, b};
-    out->backward_fn_ = [a, b, out]() {
-        if (a->requires_grad_) a->grad_ += out->grad_;
-        if (b->requires_grad_) {
-            for (std::size_t i = 0; i < out->data().size(); i++) {
-                std::size_t col = i % b->data().size();
-                b->grad_.data()[col] += out->grad_.data()[i];
+    out->backward_fn_ = [a_ptr = a.get(), b_ptr = b.get(), out_ptr = out.get()]() {
+        if (a_ptr->requires_grad_) a_ptr->grad_ += out_ptr->grad_;
+        if (b_ptr->requires_grad_) {
+            for (std::size_t i = 0; i < out_ptr->data().size(); i++) {
+                std::size_t col = i % b_ptr->data().size();
+                b_ptr->grad_.data()[col] += out_ptr->grad_.data()[i];
             }
         }
     };
@@ -211,15 +211,15 @@ inline std::shared_ptr<Variable> mul(std::shared_ptr<Variable>& a, std::shared_p
     if (!out->requires_grad()) return out;
     
     out->parents_ = {a, b};
-    out->backward_fn_ = [a, b, out]() {
-        if (a->requires_grad_) {
-            for (std::size_t i = 0; i < a->grad_.size(); i++) {
-                a->grad_.data()[i] += out->grad_.data()[i] * b->data_.data()[i];
+    out->backward_fn_ = [a_ptr = a.get(), b_ptr = b.get(), out_ptr = out.get()]() {
+        if (a_ptr->requires_grad_) {
+            for (std::size_t i = 0; i < a_ptr->grad_.size(); i++) {
+                a_ptr->grad_.data()[i] += out_ptr->grad_.data()[i] * b_ptr->data_.data()[i];
             }
         }
-        if (b->requires_grad_) {
-            for (std::size_t i = 0; i < b->grad_.size(); i++) {
-                b->grad_.data()[i] += out->grad_.data()[i] * a->data_.data()[i];
+        if (b_ptr->requires_grad_) {
+            for (std::size_t i = 0; i < b_ptr->grad_.size(); i++) {
+                b_ptr->grad_.data()[i] += out_ptr->grad_.data()[i] * a_ptr->data_.data()[i];
             }
         }
     };
@@ -235,12 +235,12 @@ inline std::shared_ptr<Variable> matmul(std::shared_ptr<Variable>& a, std::share
     if (!out->requires_grad()) return out;
 
     out->parents_ = {a, b};
-    out->backward_fn_ = [a, b, out]() {
-        if (a->requires_grad_) {
-            a->grad_ += out->grad_.matmul(b->data_.transpose(b->data_.ndim() - 2, b->data_.ndim() - 1));
+    out->backward_fn_ = [a_ptr = a.get(), b_ptr = b.get(), out_ptr = out.get()]() {
+        if (a_ptr->requires_grad_) {
+            a_ptr->grad_ += out_ptr->grad_.matmul(b_ptr->data_.transpose(b_ptr->data_.ndim() - 2, b_ptr->data_.ndim() - 1));
         }
-        if (b->requires_grad_) {
-            b->grad_ += (a->data_.transpose(a->data_.ndim() - 2, a->data_.ndim() - 1)).matmul(out->grad_);
+        if (b_ptr->requires_grad_) {
+            b_ptr->grad_ += (a_ptr->data_.transpose(a_ptr->data_.ndim() - 2, a_ptr->data_.ndim() - 1)).matmul(out_ptr->grad_);
         }
     };
 
@@ -262,9 +262,9 @@ inline std::shared_ptr<Variable> relu(std::shared_ptr<Variable>& x) {
     if (!out->requires_grad()) return out;
 
     out->parents_ = {x};
-    out->backward_fn_ = [x, out]() {
-        for (std::size_t i = 0; i < x->data_.size(); i++) {
-            x->grad_.data()[i] += x->data_.data()[i] > 0 ? out->grad_.data()[i] : 0;
+    out->backward_fn_ = [x_ptr = x.get(), out_ptr = out.get()]() {
+        for (std::size_t i = 0; i < x_ptr->data_.size(); i++) {
+            x_ptr->grad_.data()[i] += x_ptr->data_.data()[i] > 0 ? out_ptr->grad_.data()[i] : 0;
         }
     };
 
@@ -298,9 +298,9 @@ inline std::shared_ptr<Variable> mse_loss(std::shared_ptr<Variable>& pred, Varia
     if (!out->requires_grad_) return out;
 
     out->parents_ = {pred};
-    out->backward_fn_ = [pred, &target]() {
-        for (std::size_t i = 0; i < pred->data_.size(); i++) {
-            pred->grad_.data()[i] += 2 * (pred->data_.data()[i] - target.data_.data()[i]) / pred->data_.size();
+    out->backward_fn_ = [pred_ptr = pred.get(), &target]() {
+        for (std::size_t i = 0; i < pred_ptr->data_.size(); i++) {
+            pred_ptr->grad_.data()[i] += 2 * (pred_ptr->data_.data()[i] - target.data_.data()[i]) / pred_ptr->data_.size();
         }
     };
     

@@ -254,6 +254,19 @@ void test_grad_check_matmul() {
     grad_check(b, make_loss);
 }
 
+void test_graph_lifetime() {
+    std::weak_ptr<learn::Variable> observed;
+    {
+        auto a = std::make_shared<learn::Variable>(learn::TensorF({2, 2}, {0.3f, -0.5f, 1.1f, 0.7f}), true);
+        auto b = std::make_shared<learn::Variable>(learn::TensorF({2, 2}, {0.2f, 0.4f, -0.6f, 0.8f}), true);
+        auto out = add(a, b);
+        observed = out;
+
+        CHECK(!observed.expired());
+    }
+    CHECK(observed.expired());
+}
+
 }  // namespace
 
 int main() {
@@ -277,6 +290,7 @@ int main() {
     run_test("grad_check_mul", test_grad_check_mul);
     run_test("grad_check_neg", test_grad_check_neg);
     run_test("grad_check_matmul", test_grad_check_matmul);
+    run_test("graph_lifetime", test_graph_lifetime);
 
     std::cout << tests_run << " checks, " << tests_failed << " failed\n";
     return tests_failed == 0 ? 0 : 1;

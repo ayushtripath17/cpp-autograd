@@ -76,7 +76,7 @@ private:
         std::size_t ind = 0;
         for (std::size_t i = 0; i < indices.size(); i++) {
             if (*(indices.begin() + i) >= shape_[i]) {
-                throw std::invalid_argument("Invalid indices.");
+                throw std::out_of_range("Invalid indices.");
             }
             ind += (*(indices.begin() + i) * strides_[i]);
         }
@@ -87,6 +87,67 @@ private:
 
 template <typename T>
 class Tensor {
+private:
+    Vector<T> data_;
+    Vector<std::size_t> shape_;
+    Vector<std::size_t> strides_;
+    std::size_t offset_ = 0;
+
+    static std::size_t product(std::initializer_list<std::size_t> shape) {
+        std::size_t n = 1;
+        for (std::size_t d : shape) {
+            if (d == 0) return 0;
+            n *= d;
+        }
+        return n;
+    }
+
+    static Vector<std::size_t> make_strides(const Vector<std::size_t>& shape) {
+        // row-major contiguous strides.
+        // e.g. shape [2,3,4] -> strides [12, 4, 1]
+
+        Vector stride = Vector<std::size_t>(shape.size(), std::size_t{1});
+        std::size_t counter = 1;
+        for (int i = stride.size() - 1; i >= 0; i--) {
+            stride[(std::size_t) i] = counter;
+            counter *= shape[i];
+        }
+        return stride;
+    }
+
+    std::size_t linear_index(const Vector<std::size_t>& indices, const Vector<std::size_t>& shape, const Vector<std::size_t>& strides) const {
+        // offset_ + sum indices[i] * strides_[i]
+
+        if (indices.size() != strides.size()) {
+            throw std::invalid_argument("Number of indices must match number of dimensions of Tensor.");
+        }
+        std::size_t ind = 0;
+        for (std::size_t i = 0; i < indices.size(); i++) {
+            if (indices[i] >= shape[i]) {
+                throw std::out_of_range("Index otuside corresponding dimension.");
+            }
+            ind += (indices[i] * strides[i]);
+        }
+        return ind;
+    }
+
+    Vector<std::size_t> reverse_index(std::size_t ind, const Vector<std::size_t>& strides) const {
+        Vector<std::size_t> indices;
+        for (std::size_t i = 0; i < strides_.size(); i++) {
+            indices.push_back(ind / strides[i]);
+            ind %= strides[i];
+        }
+        return indices;
+    }
+
+    std::size_t num_elements(const Vector<std::size_t>& shape) const {
+        std::size_t total = 1;
+        for (std::size_t i = 0; i < shape.size(); i++) {
+            total *= shape[i];
+        }
+        return total;
+    }
+
 public:
     // --- Construction ---
 
@@ -94,72 +155,44 @@ public:
 
     explicit Tensor(std::initializer_list<std::size_t> shape)
         : data_(), shape_(), strides_(), offset_(0) {
-        // TODO: compute numel from shape, allocate data_, fill with T().
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total *= *(shape.begin() + i);
-        }
+
+        std::size_t total = num_elements(Vector(shape));
         data_ = Vector<T>(total);
         shape_ = Vector<std::size_t>(shape);
-        strides_ = Vector<std::size_t>(shape.size(), std::size_t{1});
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total /= shape_[i];
-            strides_[i] = total;
-        }
+        strides_ = make_strides(Vector(shape));
     }
 
     Tensor(Vector<std::size_t> shape)
         : data_(), shape_(), strides_(), offset_(0) {
         // TODO: compute numel from shape, allocate data_, fill with T().
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total *= shape[i];
-        }
+        std::size_t total = num_elements(shape);
         data_ = Vector<T>(total);
         shape_ = shape;
-        strides_ = Vector<std::size_t>(shape.size(), std::size_t{1});
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total /= shape_[i];
-            strides_[i] = total;
-        }
+        strides_ = make_strides(shape);
     }
 
     Tensor(std::initializer_list<std::size_t> shape, const T& value)
         : data_(), shape_(), strides_(), offset_(0) {
         // TODO: allocate and fill with value.
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total *= *(shape.begin() + i);
-        }
+        std::size_t total = num_elements(Vector(shape));
         data_ = Vector<T>(total, value);
 
         shape_ = Vector<std::size_t>(shape);
-        strides_ = Vector<std::size_t>(shape.size(), std::size_t{1});
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total /= shape_[i];
-            strides_[i] = total;
-        }
+        strides_ = make_strides(Vector(shape));
     }
 
     Tensor(std::initializer_list<std::size_t> shape,
            std::initializer_list<T> values)
         : data_(), shape_(), strides_(), offset_(0) {
         // TODO: values.size() must equal product(shape).
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total *= *(shape.begin() + i);
-        }
+        std::size_t total = num_elements(Vector(shape));
         if (values.size() != total) {
             throw std::invalid_argument("Invalid size of values.");
         }
         
         data_ = Vector(values);
         shape_ = Vector(shape);
-        strides_ = Vector<std::size_t>(shape.size(), std::size_t{1});
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total /= shape_[i];
-            strides_[i] = total;
-        }
+        strides_ = make_strides(Vector(shape));
     }
 
     // --- Metadata ---
@@ -177,11 +210,11 @@ public:
     // --- Element access ---
 
     T& at(std::initializer_list<std::size_t> indices) {
-        return data_[linear_index(indices)];
+        return data_[linear_index(Vector(indices), this->shape_, this->strides_)];
     }
 
     const T& at(std::initializer_list<std::size_t> indices) const {
-        return data_[linear_index(indices)];
+        return data_[linear_index(Vector(indices), this->shape_, this->strides_)];
     }
 
     // --- Shape ops ---
@@ -189,10 +222,7 @@ public:
     Tensor reshape(std::initializer_list<std::size_t> new_shape) const {
         // TODO: product(new_shape) must equal size(). New Tensor shares semantics:
         // copy data into new contiguous Tensor with new shape/strides.
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < new_shape.size(); i++) {
-            total *= *(new_shape.begin() + i);
-        }
+        std::size_t total = num_elements(Vector(new_shape));
 
         if (total != size()) throw std::invalid_argument("Invalid new shape.");
 
@@ -218,7 +248,7 @@ public:
         for (std::size_t i = 0; i < size(); i++) {
             Vector<std::size_t> indices = reverse_index(i, this->strides_);
             std::swap(indices[axis0], indices[axis1]);
-            transposed.data()[linear_index(indices, transposed.strides_)] = data_[i];
+            transposed.data()[linear_index(indices, transposed.shape_, transposed.strides_)] = data_[i];
         }
 
         return transposed;
@@ -226,10 +256,7 @@ public:
 
     TensorView<T> view(std::initializer_list<std::size_t> new_shape) {
         // TODO: product(new_shape) == size(); build view sharing data_.data().
-        std::size_t product = 1;
-        for (std::size_t i = 0; i < new_shape.size(); i++) {
-            product *= *(new_shape.begin() + i);
-        }
+        std::size_t product = num_elements(Vector(new_shape));
         if (product != size()) throw std::invalid_argument("Size must remain the same.");
         
         TensorView<T> reshaped = TensorView<T>();
@@ -468,65 +495,6 @@ public:
         }
 
         return result;
-    }
-
-private:
-    Vector<T> data_;
-    Vector<std::size_t> shape_;
-    Vector<std::size_t> strides_;
-    std::size_t offset_ = 0;
-
-    static std::size_t product(std::initializer_list<std::size_t> shape) {
-        std::size_t n = 1;
-        for (std::size_t d : shape) {
-            if (d == 0) return 0;
-            n *= d;
-        }
-        return n;
-    }
-
-    static Vector<std::size_t> make_strides(const Vector<std::size_t>& shape) {
-        // TODO: row-major contiguous strides.
-        // e.g. shape [2,3,4] -> strides [12, 4, 1]
-        std::size_t total = 1;
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total *= shape[i];
-        }
-
-        Vector stride = Vector<std::size_t>(shape.size(), std::size_t{1});
-        for (std::size_t i = 0; i < shape.size(); i++) {
-            total /= shape[i];
-            stride[i] = total;
-        }
-        return stride;
-    }
-
-    std::size_t linear_index(std::initializer_list<std::size_t> indices) const {
-        // TODO: offset_ + sum indices[i] * strides_[i]
-        std::size_t ind = 0;
-        for (std::size_t i = 0; i < indices.size(); i++) {
-            ind += (*(indices.begin() + i) * strides_[i]);
-        }
-        ind += offset_;
-        return ind;
-    }
-
-    std::size_t linear_index(Vector<std::size_t>& indices, Vector<std::size_t>& strides) const {
-        // TODO: offset_ + sum indices[i] * strides_[i]
-        std::size_t ind = 0;
-        for (std::size_t i = 0; i < indices.size(); i++) {
-            ind += (indices[i] * strides[i]);
-        }
-        return ind;
-    }
-
-    Vector<std::size_t> reverse_index(std::size_t ind, const Vector<std::size_t>& strides) const {
-        Vector<std::size_t> indices;
-        for (std::size_t i = 0; i < strides_.size(); i++) {
-            indices.push_back(ind / strides[i]);
-            ind %= strides[i];
-        }
-        return indices;
     }
 };
 

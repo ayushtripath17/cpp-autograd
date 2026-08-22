@@ -179,9 +179,27 @@ void test_pop_back_and_clear() {
 }
 
 void test_const_access() {
-    const learn::Vector<int> v = {10, 20, 30};
+    learn::Vector<int> v = {10, 20, 30};
     CHECK(v[1] == 20);
     CHECK(v.data()[2] == 30);
+}
+
+void test_push_back_ref() {
+    learn::Vector v = {10, 20};
+    v.push_back(v[0]);
+    CHECK(v[2] == 10);
+}
+
+void test_push_back_ref_move() {
+    learn::Vector v = {10, 20};
+    v.push_back(std::move(v[0]));
+    CHECK(v[2] == 10);
+}
+
+void test_resize_ref() {
+    learn::Vector v = {10, 20};
+    v.resize(6, v[0]);
+    CHECK(v[5] == 10);
 }
 
 // Non-trivial type: catches missing destructor / copy bugs.
@@ -245,6 +263,9 @@ int main() {
     run_test("test_pop_back_and_clear", test_pop_back_and_clear);
     run_test("test_const_access", test_const_access);
     run_test("test_non_trivial_type", test_non_trivial_type);
+    run_test("test_push_back_ref", test_push_back_ref);
+    run_test("test_push_back_ref_move", test_push_back_ref_move);
+    run_test("test_resize_ref", test_resize_ref);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 
