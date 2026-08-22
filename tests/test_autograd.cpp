@@ -267,6 +267,224 @@ void test_graph_lifetime() {
     CHECK(observed.expired());
 }
 
+template <typename Fn>
+bool throws_exception(Fn&& fn) {
+    try {
+        fn();
+        return false;
+    } catch (const std::exception&) {
+        return true;
+    }
+}
+
+// Adam update helper matching learn::Adam::step for one scalar element.
+float adam_expected(float theta, float g, float m, float v,
+                    float lr, float beta1, float beta2, float eps, int t,
+                    float* m_out = nullptr, float* v_out = nullptr) {
+    const float m_new = beta1 * m + (1.f - beta1) * g;
+    const float v_new = beta2 * v + (1.f - beta2) * g * g;
+    const float m_hat = m_new / (1.f - std::pow(beta1, static_cast<float>(t)));
+    const float v_hat = v_new / (1.f - std::pow(beta2, static_cast<float>(t)));
+    if (m_out) {
+        *m_out = m_new;
+    }
+    if (v_out) {
+        *v_out = v_new;
+    }
+    return theta - lr * m_hat / (std::sqrt(v_hat) + eps);
+}
+
+void test_adam_first_update() {
+    // Step 1 bias correction: m_hat = g, v_hat = g^2.
+    const float lr = 0.1f;
+    const float beta1 = 0.9f;
+    const float beta2 = 0.999f;
+    const float eps = 1e-8f;
+    const float theta0 = 1.0f;
+    const float g = 2.0f;
+
+    learn::Variable w(learn::TensorF({1}, {theta0}), true);
+    w.grad().at({0}) = g;
+
+    learn::Adam opt({&w}, lr, beta1, beta2, eps);
+    opt.step();
+
+    const float expected = adam_expected(theta0, g, 0.f, 0.f, lr, beta1, beta2, eps, 1);
+    // Explicitly: m_hat=g, v_hat=g*g on first step.
+    const float expected_explicit = theta0 - lr * g / (std::sqrt(g * g) + eps);
+    CHECK_NEAR(expected, expected_explicit, 1e-6f);
+    CHECK_NEAR(w.data().at({0}), expected_explicit, 1e-5f);
+}
+
+void test_adam_multiple_updates() {
+    const float lr = 0.05f;
+    const float beta1 = 0.9f;
+    const float beta2 = 0.999f;
+    const float eps = 1e-8f;
+    const float theta0 = 3.0f;
+    const float g1 = 1.5f;
+    const float g2 = -0.5f;
+
+    learn::Variable w(learn::TensorF({1}, {theta0}), true);
+    learn::Adam opt({&w}, lr, beta1, beta2, eps);
+
+    float m = 0.f;
+    float v = 0.f;
+
+    w.grad().at({0}) = g1;
+    opt.step();
+    float expected = adam_expected(theta0, g1, m, v, lr, beta1, beta2, eps, 1, &m, &v);
+    CHECK_NEAR(w.data().at({0}), expected, 1e-5f);
+
+    w.grad().at({0}) = g2;
+    opt.step();
+    expected = adam_expected(expected, g2, m, v, lr, beta1, beta2, eps, 2, &m, &v);
+    CHECK_NEAR(w.data().at({0}), expected, 1e-5f);
+}
+
+void test_adam_multiple_parameters_independent_state() {
+    const float lr = 0.1f;
+    const float beta1 = 0.9f;
+    const float beta2 = 0.999f;
+    const float eps = 1e-8f;
+
+    learn::Variable w1(learn::TensorF({1}, {1.0f}), true);
+    learn::Variable w2(learn::TensorF({1}, {2.0f}), true);
+    w1.grad().at({0}) = 3.0f;
+    w2.grad().at({0}) = -1.0f;
+
+    learn::Adam opt({&w1, &w2}, lr, beta1, beta2, eps);
+    opt.step();
+
+    const float e1 = adam_expected(1.0f, 3.0f, 0.f, 0.f, lr, beta1, beta2, eps, 1);
+    const float e2 = adam_expected(2.0f, -1.0f, 0.f, 0.f, lr, beta1, beta2, eps, 1);
+    CHECK_NEAR(w1.data().at({0}), e1, 1e-5f);
+    CHECK_NEAR(w2.data().at({0}), e2, 1e-5f);
+
+    // Second step with swapped grads — each param's m/v must have tracked its own history.
+    float m1 = 0.f;
+    float v1 = 0.f;
+    float m2 = 0.f;
+    float v2 = 0.f;
+    (void)adam_expected(1.0f, 3.0f, 0.f, 0.f, lr, beta1, beta2, eps, 1, &m1, &v1);
+    (void)adam_expected(2.0f, -1.0f, 0.f, 0.f, lr, beta1, beta2, eps, 1, &m2, &v2);
+
+    w1.grad().at({0}) = -1.0f;
+    w2.grad().at({0}) = 3.0f;
+    opt.step();
+
+    const float e1b = adam_expected(e1, -1.0f, m1, v1, lr, beta1, beta2, eps, 2);
+    const float e2b = adam_expected(e2, 3.0f, m2, v2, lr, beta1, beta2, eps, 2);
+    CHECK_NEAR(w1.data().at({0}), e1b, 1e-5f);
+    CHECK_NEAR(w2.data().at({0}), e2b, 1e-5f);
+}
+
+void test_adam_zero_grad() {
+    const float lr = 0.1f;
+    const float beta1 = 0.9f;
+    const float beta2 = 0.999f;
+    const float eps = 1e-8f;
+    const float theta0 = 1.0f;
+    const float g1 = 2.0f;
+    const float g2 = 0.5f;
+
+    learn::Variable w(learn::TensorF({1}, {theta0}), true);
+    learn::Adam opt({&w}, lr, beta1, beta2, eps);
+
+    float m = 0.f;
+    float v = 0.f;
+    w.grad().at({0}) = g1;
+    opt.step();
+    float after_step1 = adam_expected(theta0, g1, m, v, lr, beta1, beta2, eps, 1, &m, &v);
+    CHECK_NEAR(w.data().at({0}), after_step1, 1e-5f);
+
+    w.grad().at({0}) = 99.f;
+    opt.zero_grad();
+    CHECK_NEAR(w.grad().at({0}), 0.f, 1e-7f);
+    CHECK_NEAR(w.data().at({0}), after_step1, 1e-5f);  // parameters unchanged
+
+    // Adam m/v state must still reflect step 1 (not reset by zero_grad).
+    w.grad().at({0}) = g2;
+    opt.step();
+    const float after_step2 = adam_expected(after_step1, g2, m, v, lr, beta1, beta2, eps, 2);
+    CHECK_NEAR(w.data().at({0}), after_step2, 1e-5f);
+}
+
+void test_adam_frozen_parameters() {
+    learn::Variable frozen(learn::TensorF({2}, {4.f, 5.f}), /*requires_grad=*/false);
+    learn::Variable trainable(learn::TensorF({1}, {1.f}), true);
+
+    // Even if someone writes into grad storage, frozen params must not update.
+    frozen.grad() = learn::TensorF({2}, {10.f, 20.f});
+    trainable.grad().at({0}) = 3.f;
+
+    const float frozen0 = frozen.data().at({0});
+    const float frozen1 = frozen.data().at({1});
+
+    learn::Adam opt({&frozen, &trainable}, 0.1f);
+    opt.step();
+
+    CHECK_NEAR(frozen.data().at({0}), frozen0, 1e-7f);
+    CHECK_NEAR(frozen.data().at({1}), frozen1, 1e-7f);
+    CHECK(trainable.data().at({0}) != 1.f);
+}
+
+void test_adam_different_tensor_shapes() {
+    const float lr = 0.1f;
+    const float beta1 = 0.9f;
+    const float beta2 = 0.999f;
+    const float eps = 1e-8f;
+
+    learn::Variable w1d(learn::TensorF({3}, {1.f, 2.f, 3.f}), true);
+    learn::Variable w2d(learn::TensorF({2, 2}, {1.f, 1.f, 1.f, 1.f}), true);
+    learn::Variable w3d(learn::TensorF({2, 1, 2}, {0.5f, -0.5f, 1.5f, -1.5f}), true);
+
+    w1d.grad() = learn::TensorF({3}, {0.1f, 0.2f, 0.3f});
+    w2d.grad() = learn::TensorF({2, 2}, {1.f, -1.f, 0.5f, -0.5f});
+    w3d.grad() = learn::TensorF({2, 1, 2}, {2.f, 2.f, -2.f, -2.f});
+
+    learn::Adam opt({&w1d, &w2d, &w3d}, lr, beta1, beta2, eps);
+    opt.step();
+
+    // Re-derive from known initial values (grads unchanged by step).
+    const float o1[] = {1.f, 2.f, 3.f};
+    const float g1[] = {0.1f, 0.2f, 0.3f};
+    for (std::size_t i = 0; i < 3; ++i) {
+        const float exp = adam_expected(o1[i], g1[i], 0.f, 0.f, lr, beta1, beta2, eps, 1);
+        CHECK_NEAR(w1d.data().data()[i], exp, 1e-5f);
+    }
+
+    const float o2[] = {1.f, 1.f, 1.f, 1.f};
+    const float g2[] = {1.f, -1.f, 0.5f, -0.5f};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const float exp = adam_expected(o2[i], g2[i], 0.f, 0.f, lr, beta1, beta2, eps, 1);
+        CHECK_NEAR(w2d.data().data()[i], exp, 1e-5f);
+    }
+
+    const float o3[] = {0.5f, -0.5f, 1.5f, -1.5f};
+    const float g3[] = {2.f, 2.f, -2.f, -2.f};
+    for (std::size_t i = 0; i < 4; ++i) {
+        const float exp = adam_expected(o3[i], g3[i], 0.f, 0.f, lr, beta1, beta2, eps, 1);
+        CHECK_NEAR(w3d.data().data()[i], exp, 1e-5f);
+    }
+}
+
+void test_adam_invalid_configuration() {
+    learn::Variable w(learn::TensorF({1}, {1.f}), true);
+
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, -0.1f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, 0.9f, 0.999f, 0.f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, 0.9f, 0.999f, -1e-8f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, -0.1f, 0.999f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, 1.0f, 0.999f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, 0.9f, -0.1f); }));
+    CHECK(throws_exception([&] { learn::Adam({&w}, 0.1f, 0.9f, 1.0f); }));
+
+    // Valid edge betas in [0, 1) should construct.
+    CHECK(!throws_exception([&] { learn::Adam({&w}, 0.1f, 0.f, 0.f, 1e-8f); }));
+}
+
 }  // namespace
 
 int main() {
@@ -291,6 +509,13 @@ int main() {
     run_test("grad_check_neg", test_grad_check_neg);
     run_test("grad_check_matmul", test_grad_check_matmul);
     run_test("graph_lifetime", test_graph_lifetime);
+    run_test("adam_first_update", test_adam_first_update);
+    run_test("adam_multiple_updates", test_adam_multiple_updates);
+    run_test("adam_multiple_parameters_independent_state", test_adam_multiple_parameters_independent_state);
+    run_test("adam_zero_grad", test_adam_zero_grad);
+    run_test("adam_frozen_parameters", test_adam_frozen_parameters);
+    run_test("adam_different_tensor_shapes", test_adam_different_tensor_shapes);
+    run_test("adam_invalid_configuration", test_adam_invalid_configuration);
 
     std::cout << tests_run << " checks, " << tests_failed << " failed\n";
     return tests_failed == 0 ? 0 : 1;

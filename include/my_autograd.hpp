@@ -436,6 +436,10 @@ class Adam {
         Adam(std::vector<Variable*> parameters, float lr = 0.001f, 
             float beta1 = 0.9f, float beta2 = 0.999f, float eps = 1e-8f)
             : parameters_(std::move(parameters)), lr_(lr), t_(0), beta1_(beta1), beta2_(beta2), eps_(eps) {
+                if (lr <= 0 || eps <= 0 || beta1 < 0 || beta1 >= 1 || beta2 < 0 || beta2 >= 1) {
+                    throw std::invalid_argument("Invalid Adam configuration.");
+                }
+                
                 for (std::size_t i = 0; i < parameters_.size(); i++) {
                     m_.push_back(TensorF(parameters_[i]->data().shape()));
                     v_.push_back(TensorF(parameters_[i]->data().shape()));
