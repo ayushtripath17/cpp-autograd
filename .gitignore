@@ -1,5 +1,9 @@
 build/
+build-bench/
+build-sanitize/
 cmake-build-*/
 .vscode/
 *.o
 *.out
+.cache/
+compile_commands.json

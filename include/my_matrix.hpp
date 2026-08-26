@@ -148,15 +148,19 @@ public:
             throw std::invalid_argument("Invalid dimensions.");
         }
 
-        Matrix product(rows_, other.cols());
+        std::size_t other_cols = other.cols();
+        Matrix product(rows_, other_cols, T());
         
+        const T* data_ptr = data_.data();
+        const T* other_data_ptr = other.data_.data();
+        T* product_ptr = product.data_.data();
+
         for (std::size_t i = 0; i < rows_; i++) {
-            for (std::size_t z = 0; z < other.cols(); z++) {
-                T sum = T();
-                for (std::size_t j = 0; j < cols_; j++) {
-                    sum += (data_[i * cols_ + j] * other.data()[j * other.cols() + z]);
+            for (std::size_t j = 0; j < cols_; j++) {
+                T local = *(data_ptr + (i * cols_ + j));
+                for (std::size_t k = 0; k < other_cols; k++) {
+                    *(product_ptr + (i * other_cols + k)) += local * *(other_data_ptr + (j * other_cols + k));
                 }
-                product.data()[i * product.cols() + z] = std::move(sum);
             }
         }
         return product;
