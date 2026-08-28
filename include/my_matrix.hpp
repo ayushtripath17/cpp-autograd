@@ -166,6 +166,40 @@ public:
         return product;
     }
 
+    Matrix blocked_matmul(const Matrix& other, std::size_t block_size) const {
+        if (this->cols_ != other.rows_) {
+            throw std::invalid_argument("Invalid dimensions.");
+        }
+
+        Matrix product(rows_, other.cols_, T());
+
+        const T* data_ptr = data_.data();
+        const T* other_data_ptr = other.data_.data();
+        T* product_ptr = product.data_.data();
+
+        for (std::size_t ii = 0; ii < rows_; ii += block_size) {
+            for (std::size_t jj = 0; jj < cols_; jj += block_size) {
+                for (std::size_t kk = 0; kk < other.cols_; kk += block_size) {
+
+                    std::size_t row_bound = std::min(rows_, ii + block_size);
+                    std::size_t col_bound = std::min(cols_, jj + block_size);
+                    std::size_t other_col_bound = std::min(other.cols_, kk + block_size);
+
+                    for (std::size_t i = ii; i < row_bound; i++) {
+                        for (std::size_t j = jj; j < col_bound; j++) {
+                            const T local = *(data_ptr + (i * cols_ + j));
+                            for (std::size_t k = kk; k < other_col_bound; k++) {
+                                *(product_ptr + (i * other.cols_ + k)) += 
+                                    local * *(other_data_ptr + (j * other.cols_ + k));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return product;
+    }
+
 private:
     Vector<T> data_;
     std::size_t rows_;

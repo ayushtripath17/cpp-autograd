@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -31,6 +32,145 @@ void run_test(const char* name, void (*test)()) {
     } while (0)
 
 #define CHECK_NEAR(a, b, eps) CHECK(std::abs((a) - (b)) < (eps))
+
+bool matrices_equal(const learn::Matrix<double>& a, const learn::Matrix<double>& b) {
+    if (a.rows() != b.rows() || a.cols() != b.cols()) return false;
+    for (std::size_t i = 0; i < a.rows(); ++i) {
+        for (std::size_t j = 0; j < a.cols(); ++j) {
+            if (a(i, j) != b(i, j)) return false;
+        }
+    }
+    return true;
+}
+
+void check_blocked_matches_matmul(const learn::Matrix<double>& a,
+                                  const learn::Matrix<double>& b,
+                                  std::size_t block_size) {
+    const learn::Matrix<double> expected = a.matmul(b);
+    const learn::Matrix<double> actual = a.blocked_matmul(b, block_size);
+    CHECK(actual.rows() == expected.rows());
+    CHECK(actual.cols() == expected.cols());
+    CHECK(matrices_equal(actual, expected));
+}
+
+void test_blocked_matmul_known_result() {
+    learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
+    learn::Matrix<double> b(3, 2, {7, 8, 9, 10, 11, 12});
+    learn::Matrix<double> c = a.blocked_matmul(b, 2);
+
+    CHECK(c.rows() == 2);
+    CHECK(c.cols() == 2);
+    CHECK(c(0, 0) == 58);
+    CHECK(c(0, 1) == 64);
+    CHECK(c(1, 0) == 139);
+    CHECK(c(1, 1) == 154);
+}
+
+void test_blocked_matmul_identity() {
+    learn::Matrix<double> a(2, 2, {1, 2, 3, 4});
+    learn::Matrix<double> i(2, 2, {1, 0, 0, 1});
+    learn::Matrix<double> c = a.blocked_matmul(i, 1);
+
+    CHECK(c(0, 0) == 1);
+    CHECK(c(0, 1) == 2);
+    CHECK(c(1, 0) == 3);
+    CHECK(c(1, 1) == 4);
+}
+
+void test_blocked_matmul_various_block_sizes() {
+    learn::Matrix<double> a(5, 7, {
+        1, 2, 3, 4, 5, 6, 7,
+        8, 9, 10, 11, 12, 13, 14,
+        15, 16, 17, 18, 19, 20, 21,
+        22, 23, 24, 25, 26, 27, 28,
+        29, 30, 31, 32, 33, 34, 35,
+    });
+    learn::Matrix<double> b(7, 4, {
+        1, 0, 2, 1,
+        0, 1, 1, 2,
+        2, 1, 0, 0,
+        1, 2, 3, 1,
+        0, 0, 1, 2,
+        3, 2, 1, 0,
+        1, 1, 1, 1,
+    });
+
+    const std::vector<std::size_t> block_sizes = {1, 2, 3, 4, 5, 7, 8, 16, 32, 64};
+    for (std::size_t block_size : block_sizes) {
+        check_blocked_matches_matmul(a, b, block_size);
+    }
+}
+
+void test_blocked_matmul_non_divisible_dimensions() {
+    // Dimensions chosen so common block sizes leave partial edge tiles.
+    learn::Matrix<double> a(3, 5, {
+        1, 2, 3, 4, 5,
+        6, 7, 8, 9, 10,
+        11, 12, 13, 14, 15,
+    });
+    learn::Matrix<double> b(5, 2, {
+        1, 0,
+        0, 1,
+        2, 3,
+        4, 5,
+        6, 7,
+    });
+
+    check_blocked_matches_matmul(a, b, 2);
+    check_blocked_matches_matmul(a, b, 3);
+    check_blocked_matches_matmul(a, b, 4);
+}
+
+void test_blocked_matmul_rectangular_shapes() {
+    learn::Matrix<double> a(1, 4, {1, 2, 3, 4});
+    learn::Matrix<double> b(4, 3, {
+        1, 0, 2,
+        0, 1, 0,
+        2, 2, 1,
+        3, 1, 4,
+    });
+    check_blocked_matches_matmul(a, b, 2);
+
+    learn::Matrix<double> c(4, 1, {1, 2, 3, 4});
+    learn::Matrix<double> d(1, 3, {5, 6, 7});
+    check_blocked_matches_matmul(c, d, 1);
+}
+
+void test_blocked_matmul_single_element() {
+    learn::Matrix<double> a(1, 1, {6.0});
+    learn::Matrix<double> b(1, 1, {7.0});
+    check_blocked_matches_matmul(a, b, 1);
+    check_blocked_matches_matmul(a, b, 8);
+}
+
+void test_blocked_matmul_zero_matrix() {
+    learn::Matrix<double> a(2, 3, {0, 0, 0, 0, 0, 0});
+    learn::Matrix<double> b(3, 2, {1, 2, 3, 4, 5, 6});
+    check_blocked_matches_matmul(a, b, 2);
+}
+
+void test_blocked_matmul_larger_matrix() {
+    learn::Matrix<double> a(8, 8);
+    learn::Matrix<double> b(8, 8);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a.data()[i] = static_cast<double>(i) - 10.0;
+        b.data()[i] = static_cast<double>(i % 5) + 0.5;
+    }
+    check_blocked_matches_matmul(a, b, 3);
+    check_blocked_matches_matmul(a, b, 8);
+}
+
+void test_blocked_matmul_shape_mismatch() {
+    learn::Matrix<double> a(2, 3);
+    learn::Matrix<double> b(2, 2);
+    bool threw = false;
+    try {
+        (void)a.blocked_matmul(b, 2);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
+}
 
 void test_default_construct() {
     learn::Matrix<double> m;
@@ -283,6 +423,15 @@ int main() {
     run_test("test_add_shape_mismatch", test_add_shape_mismatch);
     run_test("test_matmul_shape_mismatch", test_matmul_shape_mismatch);
     run_test("test_initializer_list_size_mismatch", test_initializer_list_size_mismatch);
+    run_test("test_blocked_matmul_known_result", test_blocked_matmul_known_result);
+    run_test("test_blocked_matmul_identity", test_blocked_matmul_identity);
+    run_test("test_blocked_matmul_various_block_sizes", test_blocked_matmul_various_block_sizes);
+    run_test("test_blocked_matmul_non_divisible_dimensions", test_blocked_matmul_non_divisible_dimensions);
+    run_test("test_blocked_matmul_rectangular_shapes", test_blocked_matmul_rectangular_shapes);
+    run_test("test_blocked_matmul_single_element", test_blocked_matmul_single_element);
+    run_test("test_blocked_matmul_zero_matrix", test_blocked_matmul_zero_matrix);
+    run_test("test_blocked_matmul_larger_matrix", test_blocked_matmul_larger_matrix);
+    run_test("test_blocked_matmul_shape_mismatch", test_blocked_matmul_shape_mismatch);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 
