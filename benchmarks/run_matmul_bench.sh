@@ -3,7 +3,8 @@
 #
 # Usage:
 #   ./benchmarks/run_matmul_bench.sh          # all benchmarks
-#   ./benchmarks/run_matmul_bench.sh compare  # baseline + blocked at 256–2048
+#   ./benchmarks/run_matmul_bench.sh compare  # unblocked + blocked (block=128)
+#   ./benchmarks/run_matmul_bench.sh sgemm    # unblocked vs single-thread cblas_sgemm
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,12 +18,20 @@ LATEST_JSON="${RESULTS_DIR}/matmul_latest.json"
 LATEST_TXT="${RESULTS_DIR}/matmul_latest.txt"
 
 BENCHMARK_FILTER=""
+BENCH_ENV=()
 if [[ "${MODE}" == "compare" ]]; then
-  BENCHMARK_FILTER='--benchmark_filter=BM_MatrixMatmulSquare/(256|512|1024|2048)|BM_BlockedMatmulSquare/(256|512|1024|2048)/.+'
+  BENCHMARK_FILTER='--benchmark_filter=BM_MatrixMatmulIntoSquare|BM_BlockedMatmulSquare'
   JSON_OUT="${RESULTS_DIR}/matmul_blocked_compare_${STAMP}.json"
   TXT_OUT="${RESULTS_DIR}/matmul_blocked_compare_${STAMP}.txt"
   LATEST_JSON="${RESULTS_DIR}/matmul_blocked_compare_latest.json"
   LATEST_TXT="${RESULTS_DIR}/matmul_blocked_compare_latest.txt"
+elif [[ "${MODE}" == "sgemm" ]]; then
+  BENCHMARK_FILTER='--benchmark_filter=BM_MatrixMatmulIntoSquare|BM_CblasSgemmSquare'
+  JSON_OUT="${RESULTS_DIR}/matmul_sgemm_compare_${STAMP}.json"
+  TXT_OUT="${RESULTS_DIR}/matmul_sgemm_compare_${STAMP}.txt"
+  LATEST_JSON="${RESULTS_DIR}/matmul_sgemm_compare_latest.json"
+  LATEST_TXT="${RESULTS_DIR}/matmul_sgemm_compare_latest.txt"
+  BENCH_ENV=(env VECLIB_MAXIMUM_THREADS=1)
 fi
 
 mkdir -p "${RESULTS_DIR}"
@@ -38,7 +47,7 @@ if [[ ! -x "${BENCH}" && -x "${BUILD_DIR}/Release/benchmark_matmul" ]]; then
   BENCH="${BUILD_DIR}/Release/benchmark_matmul"
 fi
 
-"${BENCH}" \
+"${BENCH_ENV[@]}" "${BENCH}" \
   ${BENCHMARK_FILTER} \
   --benchmark_out="${JSON_OUT}" \
   --benchmark_out_format=json \

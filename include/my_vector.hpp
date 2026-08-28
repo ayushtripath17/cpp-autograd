@@ -171,11 +171,6 @@ public:
     // --- Element access ---
 
     T& operator[](std::size_t index) {
-        // TODO: bounds check optional for learning; tests use valid indices.
-        if (index >= size_) {
-            throw std::invalid_argument("Invalid index.");
-        }
-
         return *(data_ + index);
     }
 

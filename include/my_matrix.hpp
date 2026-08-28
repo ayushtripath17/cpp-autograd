@@ -142,28 +142,32 @@ public:
     }
 
     Matrix matmul(const Matrix& other) const {
-        // TODO: matrix multiply. (*this) is (m x k), other is (k x n), result is (m x n).
-        // C(i,j) = sum_r A(i,r) * B(r,j)
         if (this->cols_ != other.rows()) {
             throw std::invalid_argument("Invalid dimensions.");
         }
+        Matrix product(rows_, other.cols_, T());
+        matmul_into(product, other);
+        return product;
+    }
 
-        std::size_t other_cols = other.cols();
-        Matrix product(rows_, other_cols, T());
-        
-        const T* data_ptr = data_.data();
-        const T* other_data_ptr = other.data_.data();
-        T* product_ptr = product.data_.data();
+    void matmul_into(Matrix& out, const Matrix& other) const {
+        if (cols_ != other.rows_ || out.rows_ != rows_ || out.cols_ != other.cols_) {
+            throw std::invalid_argument("Invalid dimensions.");
+        }
+
+        const std::size_t out_cols = other.cols_;
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            out.data_[i] = T();
+        }
 
         for (std::size_t i = 0; i < rows_; i++) {
             for (std::size_t j = 0; j < cols_; j++) {
-                T local = *(data_ptr + (i * cols_ + j));
-                for (std::size_t k = 0; k < other_cols; k++) {
-                    *(product_ptr + (i * other_cols + k)) += local * *(other_data_ptr + (j * other_cols + k));
+                T local = data_[i * cols_ + j];
+                for (std::size_t k = 0; k < out_cols; k++) {
+                    out.data_[i * out_cols + k] += local * other.data_[j * out_cols + k];
                 }
             }
         }
-        return product;
     }
 
     Matrix blocked_matmul(const Matrix& other, std::size_t block_size) const {
@@ -173,13 +177,9 @@ public:
 
         Matrix product(rows_, other.cols_, T());
 
-        const T* data_ptr = data_.data();
-        const T* other_data_ptr = other.data_.data();
-        T* product_ptr = product.data_.data();
-
         for (std::size_t ii = 0; ii < rows_; ii += block_size) {
-            for (std::size_t jj = 0; jj < cols_; jj += block_size) {
-                for (std::size_t kk = 0; kk < other.cols_; kk += block_size) {
+            for (std::size_t kk = 0; kk < other.cols_; kk += block_size) {
+                for (std::size_t jj = 0; jj < cols_; jj += block_size) {
 
                     std::size_t row_bound = std::min(rows_, ii + block_size);
                     std::size_t col_bound = std::min(cols_, jj + block_size);
@@ -187,10 +187,9 @@ public:
 
                     for (std::size_t i = ii; i < row_bound; i++) {
                         for (std::size_t j = jj; j < col_bound; j++) {
-                            const T local = *(data_ptr + (i * cols_ + j));
+                            const T local = data_[i * cols_ + j];
                             for (std::size_t k = kk; k < other_col_bound; k++) {
-                                *(product_ptr + (i * other.cols_ + k)) += 
-                                    local * *(other_data_ptr + (j * other.cols_ + k));
+                                product.data_[i * other.cols_ + k] += local * other.data_[j * other.cols_ + k];
                             }
                         }
                     }

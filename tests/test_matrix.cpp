@@ -53,6 +53,30 @@ void check_blocked_matches_matmul(const learn::Matrix<double>& a,
     CHECK(matrices_equal(actual, expected));
 }
 
+void test_matmul_into_matches_matmul() {
+    learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
+    learn::Matrix<double> b(3, 2, {7, 8, 9, 10, 11, 12});
+
+    learn::Matrix<double> expected = a.matmul(b);
+    learn::Matrix<double> actual(2, 2, 999.0);
+    a.matmul_into(actual, b);
+
+    CHECK(matrices_equal(actual, expected));
+}
+
+void test_matmul_into_shape_mismatch() {
+    learn::Matrix<double> a(2, 3);
+    learn::Matrix<double> b(3, 2);
+    learn::Matrix<double> out(2, 3);
+    bool threw = false;
+    try {
+        a.matmul_into(out, b);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
 void test_blocked_matmul_known_result() {
     learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
     learn::Matrix<double> b(3, 2, {7, 8, 9, 10, 11, 12});
@@ -414,6 +438,8 @@ int main() {
     run_test("test_scalar_multiply", test_scalar_multiply);
     run_test("test_transpose", test_transpose);
     run_test("test_matmul", test_matmul);
+    run_test("test_matmul_into_matches_matmul", test_matmul_into_matches_matmul);
+    run_test("test_matmul_into_shape_mismatch", test_matmul_into_shape_mismatch);
     run_test("test_matmul_identity", test_matmul_identity);
     run_test("test_copy_constructor_deep_copy", test_copy_constructor_deep_copy);
     run_test("test_copy_assignment", test_copy_assignment);
