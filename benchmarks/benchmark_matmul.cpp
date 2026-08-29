@@ -219,7 +219,9 @@ BENCHMARK(BM_BlockedMatmulSquare)
 
 BENCHMARK(BM_MultithreadedMatmulSquare)
     ->Apply(MultithreadedArgs)
-    ->Unit(benchmark::kMillisecond);
+    ->Unit(benchmark::kMillisecond)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime();
 
 int main(int argc, char** argv) {
 #if defined(__APPLE__)
