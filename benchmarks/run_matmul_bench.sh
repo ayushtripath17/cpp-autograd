@@ -5,6 +5,7 @@
 #   ./benchmarks/run_matmul_bench.sh          # all benchmarks
 #   ./benchmarks/run_matmul_bench.sh compare  # unblocked + blocked (block=128)
 #   ./benchmarks/run_matmul_bench.sh sgemm    # unblocked vs single-thread cblas_sgemm
+#   ./benchmarks/run_matmul_bench.sh mt       # multithreaded_matmul at 1024 (1/2/4/8 threads)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +33,12 @@ elif [[ "${MODE}" == "sgemm" ]]; then
   LATEST_JSON="${RESULTS_DIR}/matmul_sgemm_compare_latest.json"
   LATEST_TXT="${RESULTS_DIR}/matmul_sgemm_compare_latest.txt"
   BENCH_ENV=(env VECLIB_MAXIMUM_THREADS=1)
+elif [[ "${MODE}" == "mt" ]]; then
+  BENCHMARK_FILTER='--benchmark_filter=BM_MultithreadedMatmulSquare'
+  JSON_OUT="${RESULTS_DIR}/matmul_mt_compare_${STAMP}.json"
+  TXT_OUT="${RESULTS_DIR}/matmul_mt_compare_${STAMP}.txt"
+  LATEST_JSON="${RESULTS_DIR}/matmul_mt_compare_latest.json"
+  LATEST_TXT="${RESULTS_DIR}/matmul_mt_compare_latest.txt"
 fi
 
 mkdir -p "${RESULTS_DIR}"
@@ -47,12 +54,22 @@ if [[ ! -x "${BENCH}" && -x "${BUILD_DIR}/Release/benchmark_matmul" ]]; then
   BENCH="${BUILD_DIR}/Release/benchmark_matmul"
 fi
 
-"${BENCH_ENV[@]}" "${BENCH}" \
-  ${BENCHMARK_FILTER} \
-  --benchmark_out="${JSON_OUT}" \
-  --benchmark_out_format=json \
-  --benchmark_display_aggregates_only=false \
-  | tee "${TXT_OUT}"
+# macOS bash 3.2 + set -u: empty "${arr[@]}" is an unbound-variable error.
+if ((${#BENCH_ENV[@]})); then
+  "${BENCH_ENV[@]}" "${BENCH}" \
+    ${BENCHMARK_FILTER} \
+    --benchmark_out="${JSON_OUT}" \
+    --benchmark_out_format=json \
+    --benchmark_display_aggregates_only=false \
+    | tee "${TXT_OUT}"
+else
+  "${BENCH}" \
+    ${BENCHMARK_FILTER} \
+    --benchmark_out="${JSON_OUT}" \
+    --benchmark_out_format=json \
+    --benchmark_display_aggregates_only=false \
+    | tee "${TXT_OUT}"
+fi
 
 cp "${JSON_OUT}" "${LATEST_JSON}"
 cp "${TXT_OUT}" "${LATEST_TXT}"

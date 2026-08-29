@@ -6,12 +6,16 @@
 // Compare unblocked kernel vs single-thread cblas_sgemm (macOS):
 //   VECLIB_MAXIMUM_THREADS=1 ./build-bench/benchmark_matmul --benchmark_filter='BM_MatrixMatmulIntoSquare|BM_CblasSgemmSquare'
 //
+// Multithreaded matmul at 1024 with 1/2/4/8 threads:
+//   ./build-bench/benchmark_matmul --benchmark_filter=BM_MultithreadedMatmulSquare
+//
 // Compare blocked vs baseline:
 //   ./build-bench/benchmark_matmul --benchmark_filter='BM_MatrixMatmulIntoSquare|BM_BlockedMatmulSquare'
 //
 // Or use:
 //   ./benchmarks/run_matmul_bench.sh compare
 //   ./benchmarks/run_matmul_bench.sh sgemm
+//   ./benchmarks/run_matmul_bench.sh mt
 
 #include "my_matrix.hpp"
 #include "my_tensor.hpp"
@@ -30,6 +34,8 @@ namespace {
 
 constexpr int kAllSizes[] = {32, 64, 128, 256, 512, 1024, 2048, 4096};
 constexpr int kBlockedBlockSize = 128;
+constexpr int kMultithreadedSize = 1024;
+constexpr int kThreadCounts[] = {1, 2, 4, 8};
 
 learn::Tensor<float> make_square_tensor(std::size_t n, float scale, float stride) {
     learn::Vector<std::size_t> shape;
@@ -127,6 +133,23 @@ void BM_BlockedMatmulSquare(benchmark::State& state) {
     state.counters["block"] = static_cast<double>(block_size);
 }
 
+void BM_MultithreadedMatmulSquare(benchmark::State& state) {
+    const std::size_t n = static_cast<std::size_t>(state.range(0));
+    const std::size_t num_threads = static_cast<std::size_t>(state.range(1));
+
+    const learn::Matrix<float> a = make_square_matrix(n, 0.001f, 0.1f);
+    const learn::Matrix<float> b = make_square_matrix(n, 0.002f, -0.05f);
+
+    for (auto _ : state) {
+        learn::Matrix<float> result = a.multithreaded_matmul(b, num_threads);
+        benchmark::DoNotOptimize(result);
+        benchmark::ClobberMemory();
+    }
+
+    set_matmul_counters(state, n);
+    state.counters["threads"] = static_cast<double>(num_threads);
+}
+
 void AllMatmulSizeArgs(benchmark::internal::Benchmark* b) {
     for (int n : kAllSizes) {
         b->Arg(n);
@@ -136,6 +159,12 @@ void AllMatmulSizeArgs(benchmark::internal::Benchmark* b) {
 void BlockedArgs(benchmark::internal::Benchmark* b) {
     for (int n : kAllSizes) {
         b->Args({n, kBlockedBlockSize});
+    }
+}
+
+void MultithreadedArgs(benchmark::internal::Benchmark* b) {
+    for (int threads : kThreadCounts) {
+        b->Args({kMultithreadedSize, threads});
     }
 }
 
@@ -186,6 +215,10 @@ BENCHMARK(BM_CblasSgemmSquare)
 
 BENCHMARK(BM_BlockedMatmulSquare)
     ->Apply(BlockedArgs)
+    ->Unit(benchmark::kMillisecond);
+
+BENCHMARK(BM_MultithreadedMatmulSquare)
+    ->Apply(MultithreadedArgs)
     ->Unit(benchmark::kMillisecond);
 
 int main(int argc, char** argv) {
