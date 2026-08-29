@@ -23,6 +23,8 @@
 #include <stdexcept>
 #include <utility>
 #include "my_vector.hpp"
+#include <thread>
+#include <vector>
 
 namespace learn {
 
@@ -199,6 +201,36 @@ public:
         return product;
     }
 
+    Matrix multithreaded_matmul(const Matrix& other, std::size_t num_threads) const {
+        if (this->cols_ != other.rows_ || num_threads == 0) {
+            throw std::invalid_argument("Invalid dimensions/thread count.");
+        }
+
+        Matrix product(rows_, other.cols_, T());
+
+        const T* a = data_.data();
+        const T* b = other.data_.data();
+        T* c = product.data_.data();
+        const std::size_t a_cols = cols_;
+        const std::size_t b_cols = other.cols_;
+
+        std::vector<std::thread> threads;
+        num_threads = std::min(num_threads, rows_);
+        for (std::size_t i = 0; i < num_threads; i++) {
+            std::size_t begin = (i * rows_) / num_threads;
+            std::size_t end = ((i + 1) * rows_) / num_threads;
+            
+            threads.emplace_back([=] {
+                matmul_rows(a, a_cols, b, b_cols, c, begin, end);
+            });
+        }
+
+        for (std::size_t i = 0; i < num_threads; i++) {
+            threads[i].join();
+        }
+        return product;
+    }
+
 private:
     Vector<T> data_;
     std::size_t rows_;
@@ -206,6 +238,22 @@ private:
 
     static std::size_t index(std::size_t row, std::size_t col, std::size_t cols) noexcept {
         return row * cols + col;
+    }
+
+    static void matmul_rows(
+        const T* a, std::size_t a_cols,
+        const T* b, std::size_t b_cols,
+        T* c,
+        std::size_t row_begin, std::size_t row_end)
+    {
+        for (std::size_t i = row_begin; i < row_end; ++i) {
+            for (std::size_t j = 0; j < a_cols; ++j) {
+                const T local = a[i * a_cols + j];
+                for (std::size_t k = 0; k < b_cols; ++k) {
+                    c[i * b_cols + k] += local * b[j * b_cols + k];
+                }
+            }
+        }
     }
 };
 
