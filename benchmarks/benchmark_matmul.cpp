@@ -9,6 +9,9 @@
 // Multithreaded matmul at 1024 with 1/2/4/8 threads:
 //   ./build-bench/benchmark_matmul --benchmark_filter=BM_MultithreadedMatmulSquare
 //
+// Register-tiled matmul at all sizes:
+//   ./build-bench/benchmark_matmul --benchmark_filter=BM_RegisterOptimizedMatmulSquare
+//
 // Compare blocked vs baseline:
 //   ./build-bench/benchmark_matmul --benchmark_filter='BM_MatrixMatmulIntoSquare|BM_BlockedMatmulSquare'
 //
@@ -16,6 +19,7 @@
 //   ./benchmarks/run_matmul_bench.sh compare
 //   ./benchmarks/run_matmul_bench.sh sgemm
 //   ./benchmarks/run_matmul_bench.sh mt
+//   ./benchmarks/run_matmul_bench.sh register
 
 #include "my_matrix.hpp"
 #include "my_tensor.hpp"
@@ -150,6 +154,21 @@ void BM_MultithreadedMatmulSquare(benchmark::State& state) {
     state.counters["threads"] = static_cast<double>(num_threads);
 }
 
+void BM_RegisterOptimizedMatmulSquare(benchmark::State& state) {
+    const std::size_t n = static_cast<std::size_t>(state.range(0));
+
+    const learn::Matrix<float> a = make_square_matrix(n, 0.001f, 0.1f);
+    const learn::Matrix<float> b = make_square_matrix(n, 0.002f, -0.05f);
+
+    for (auto _ : state) {
+        learn::Matrix<float> result = a.register_optimized_matmul(b);
+        benchmark::DoNotOptimize(result);
+        benchmark::ClobberMemory();
+    }
+
+    set_matmul_counters(state, n);
+}
+
 void AllMatmulSizeArgs(benchmark::internal::Benchmark* b) {
     for (int n : kAllSizes) {
         b->Arg(n);
@@ -222,6 +241,10 @@ BENCHMARK(BM_MultithreadedMatmulSquare)
     ->Unit(benchmark::kMillisecond)
     ->MeasureProcessCPUTime()
     ->UseRealTime();
+
+BENCHMARK(BM_RegisterOptimizedMatmulSquare)
+    ->Apply(AllMatmulSizeArgs)
+    ->Unit(benchmark::kMillisecond);
 
 int main(int argc, char** argv) {
 #if defined(__APPLE__)
