@@ -25,6 +25,7 @@
 #include "my_vector.hpp"
 #include <thread>
 #include <vector>
+#include <iterator>
 
 namespace learn {
 
@@ -198,6 +199,60 @@ public:
                 }
             }
         }
+        return product;
+    }
+
+    Matrix register_optimized_matmul(const Matrix& other) const {
+        if (this->cols_ != other.rows_) {
+            throw std::invalid_argument("Invalid dimensions.");
+        }
+
+        Matrix product(rows_, other.cols_);
+
+        for (std::size_t ii = 0; ii < rows_; ii += 2) {
+            
+            for (std::size_t kk = 0; kk < other.cols_; kk += 4) {
+                
+                T temp [8];
+                for (std::size_t i = 0; i < 8; i++) {
+                    temp[i] = T();
+                }
+
+                // edge case - incomplete tile
+                if (ii + 2 > rows_ || kk + 4 > other.cols_) {
+                    std::size_t row_bound = std::min(rows_, ii + 2);
+                    std::size_t col_bound = std::min(other.cols_, kk + 4);
+
+                    for (std::size_t jj = 0; jj < cols_; jj++) {
+                        for (std::size_t i = ii; i < row_bound; i++) {
+                            for (std::size_t k = kk; k < col_bound; k++) {
+                                temp[(i - ii) * (col_bound - kk) + (k - kk)] += data_[i * cols_ + jj] * other.data_[jj * other.cols_ + k];
+                            }
+                        }
+                    }
+                    for (std::size_t i = ii; i < row_bound; i++) {
+                        for (std::size_t k = kk; k < col_bound; k++) {
+                            product.data_[i * other.cols_ + k] = temp[(i - ii) * (col_bound - kk) + (k - kk)];
+                        }
+                    }
+                } else {
+                    // standard case
+                    for (std::size_t jj = 0; jj < cols_; jj++) {
+                        for (std::size_t i = 0; i < 2; i++) {
+                            for (std::size_t k = 0; k < 4; k++) {
+                                temp[i * 4 + k] += data_[(i + ii) * cols_ + jj] * other.data_[jj * other.cols_ + (k + kk)];
+                            }
+                        }
+                    }
+                    for (std::size_t i = 0; i < 2; i++) {
+                        for (std::size_t k = 0; k < 4; k++) {
+                            product.data_[(i + ii) * other.cols_ + (k + kk)] = temp[i * 4 + k];
+                        }
+                    }
+                }
+            }
+        }
+        
         return product;
     }
 
