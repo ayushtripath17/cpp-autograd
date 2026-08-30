@@ -54,6 +54,9 @@ if(LEARN_BUILD_BENCHMARKS)
   set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
   set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
   set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  # Google Benchmark's Release flags include -Werror; its own sources can fail
+  # that on newer Apple Clang (e.g. old-style cast in timers.cc).
+  set(BENCHMARK_ENABLE_WERROR OFF CACHE BOOL "" FORCE)
 
   FetchContent_Declare(
     googlebenchmark
