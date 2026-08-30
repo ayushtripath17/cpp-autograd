@@ -175,10 +175,6 @@ public:
     }
 
     const T& operator[](std::size_t index) const {
-        if (index >= size_) {
-            throw std::invalid_argument("Invalid index.");
-        }
-
         return *(data_ + index);
     }
 
