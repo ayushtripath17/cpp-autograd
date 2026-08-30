@@ -333,6 +333,123 @@ void test_multithreaded_matmul_shape_mismatch() {
     CHECK(threw);
 }
 
+void check_register_optimized_matches_matmul(const learn::Matrix<double>& a,
+                                             const learn::Matrix<double>& b) {
+    const learn::Matrix<double> expected = a.matmul(b);
+    const learn::Matrix<double> actual = a.register_optimized_matmul(b);
+    CHECK(actual.rows() == expected.rows());
+    CHECK(actual.cols() == expected.cols());
+    CHECK(matrices_equal(actual, expected));
+}
+
+void test_register_optimized_matmul_known_result() {
+    learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
+    learn::Matrix<double> b(3, 2, {7, 8, 9, 10, 11, 12});
+    learn::Matrix<double> c = a.register_optimized_matmul(b);
+
+    CHECK(c.rows() == 2);
+    CHECK(c.cols() == 2);
+    CHECK(c(0, 0) == 58);
+    CHECK(c(0, 1) == 64);
+    CHECK(c(1, 0) == 139);
+    CHECK(c(1, 1) == 154);
+}
+
+void test_register_optimized_matmul_identity() {
+    learn::Matrix<double> a(2, 2, {1, 2, 3, 4});
+    learn::Matrix<double> i(2, 2, {1, 0, 0, 1});
+    learn::Matrix<double> c = a.register_optimized_matmul(i);
+
+    CHECK(c(0, 0) == 1);
+    CHECK(c(0, 1) == 2);
+    CHECK(c(1, 0) == 3);
+    CHECK(c(1, 1) == 4);
+}
+
+void test_register_optimized_matmul_odd_rows() {
+    // Tile height is 2; odd row count leaves a partial bottom tile.
+    learn::Matrix<double> a(3, 4, {
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    });
+    learn::Matrix<double> b(4, 4, {
+        1, 0, 0, 1,
+        0, 1, 1, 0,
+        2, 0, 1, 0,
+        0, 2, 0, 1,
+    });
+    check_register_optimized_matches_matmul(a, b);
+}
+
+void test_register_optimized_matmul_cols_not_multiple_of_four() {
+    // Tile width is 4; leftover columns on the right edge.
+    learn::Matrix<double> a(4, 3, {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+        10, 11, 12,
+    });
+    learn::Matrix<double> b(3, 5, {
+        1, 0, 2, 1, 0,
+        0, 1, 1, 0, 2,
+        2, 1, 0, 1, 1,
+    });
+    check_register_optimized_matches_matmul(a, b);
+}
+
+void test_register_optimized_matmul_rectangular_shapes() {
+    learn::Matrix<double> a(1, 4, {1, 2, 3, 4});
+    learn::Matrix<double> b(4, 3, {
+        1, 0, 2,
+        0, 1, 0,
+        2, 2, 1,
+        3, 1, 4,
+    });
+    check_register_optimized_matches_matmul(a, b);
+
+    learn::Matrix<double> c(4, 1, {1, 2, 3, 4});
+    learn::Matrix<double> d(1, 3, {5, 6, 7});
+    check_register_optimized_matches_matmul(c, d);
+}
+
+void test_register_optimized_matmul_single_element() {
+    learn::Matrix<double> a(1, 1, {6.0});
+    learn::Matrix<double> b(1, 1, {7.0});
+    check_register_optimized_matches_matmul(a, b);
+}
+
+void test_register_optimized_matmul_zero_matrix() {
+    learn::Matrix<double> a(2, 3, {0, 0, 0, 0, 0, 0});
+    learn::Matrix<double> b(3, 2, {1, 2, 3, 4, 5, 6});
+    check_register_optimized_matches_matmul(a, b);
+}
+
+void test_register_optimized_matmul_larger_matrix() {
+    // Mix of full 2x4 tiles and leftover edges (7x5 @ 5x6).
+    learn::Matrix<double> a(7, 5);
+    learn::Matrix<double> b(5, 6);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a.data()[i] = static_cast<double>(i) - 3.0;
+    }
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        b.data()[i] = static_cast<double>(i % 7) + 0.25;
+    }
+    check_register_optimized_matches_matmul(a, b);
+}
+
+void test_register_optimized_matmul_shape_mismatch() {
+    learn::Matrix<double> a(2, 3);
+    learn::Matrix<double> b(2, 2);
+    bool threw = false;
+    try {
+        (void)a.register_optimized_matmul(b);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
 void test_default_construct() {
     learn::Matrix<double> m;
     CHECK(m.rows() == 0);
@@ -605,6 +722,15 @@ int main() {
     run_test("test_multithreaded_matmul_zero_matrix", test_multithreaded_matmul_zero_matrix);
     run_test("test_multithreaded_matmul_larger_matrix", test_multithreaded_matmul_larger_matrix);
     run_test("test_multithreaded_matmul_shape_mismatch", test_multithreaded_matmul_shape_mismatch);
+    run_test("test_register_optimized_matmul_known_result", test_register_optimized_matmul_known_result);
+    run_test("test_register_optimized_matmul_identity", test_register_optimized_matmul_identity);
+    run_test("test_register_optimized_matmul_odd_rows", test_register_optimized_matmul_odd_rows);
+    run_test("test_register_optimized_matmul_cols_not_multiple_of_four", test_register_optimized_matmul_cols_not_multiple_of_four);
+    run_test("test_register_optimized_matmul_rectangular_shapes", test_register_optimized_matmul_rectangular_shapes);
+    run_test("test_register_optimized_matmul_single_element", test_register_optimized_matmul_single_element);
+    run_test("test_register_optimized_matmul_zero_matrix", test_register_optimized_matmul_zero_matrix);
+    run_test("test_register_optimized_matmul_larger_matrix", test_register_optimized_matmul_larger_matrix);
+    run_test("test_register_optimized_matmul_shape_mismatch", test_register_optimized_matmul_shape_mismatch);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 
