@@ -7,6 +7,7 @@
 #   ./benchmarks/run_matmul_bench.sh sgemm    # unblocked vs single-thread cblas_sgemm
 #   ./benchmarks/run_matmul_bench.sh mt       # multithreaded_matmul at 1024 (1/2/4/8 threads)
 #   ./benchmarks/run_matmul_bench.sh register # register_optimized_matmul at all sizes
+#   ./benchmarks/run_matmul_bench.sh packing  # register_optimized_matmul_packing at all sizes
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,6 +47,12 @@ elif [[ "${MODE}" == "register" ]]; then
   TXT_OUT="${RESULTS_DIR}/matmul_register_compare_${STAMP}.txt"
   LATEST_JSON="${RESULTS_DIR}/matmul_register_compare_latest.json"
   LATEST_TXT="${RESULTS_DIR}/matmul_register_compare_latest.txt"
+elif [[ "${MODE}" == "packing" ]]; then
+  BENCHMARK_FILTER='--benchmark_filter=BM_RegisterOptimizedMatmulPackingSquare'
+  JSON_OUT="${RESULTS_DIR}/matmul_packing_compare_${STAMP}.json"
+  TXT_OUT="${RESULTS_DIR}/matmul_packing_compare_${STAMP}.txt"
+  LATEST_JSON="${RESULTS_DIR}/matmul_packing_compare_latest.json"
+  LATEST_TXT="${RESULTS_DIR}/matmul_packing_compare_latest.txt"
 fi
 
 mkdir -p "${RESULTS_DIR}"
