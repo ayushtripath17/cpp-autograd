@@ -12,6 +12,9 @@
 // Register-tiled matmul at all sizes:
 //   ./build-bench/benchmark_matmul --benchmark_filter=BM_RegisterOptimizedMatmulSquare
 //
+// Register-tiled matmul with B packing at all sizes:
+//   ./build-bench/benchmark_matmul --benchmark_filter=BM_RegisterOptimizedMatmulPackingSquare
+//
 // Compare blocked vs baseline:
 //   ./build-bench/benchmark_matmul --benchmark_filter='BM_MatrixMatmulIntoSquare|BM_BlockedMatmulSquare'
 //
@@ -20,6 +23,7 @@
 //   ./benchmarks/run_matmul_bench.sh sgemm
 //   ./benchmarks/run_matmul_bench.sh mt
 //   ./benchmarks/run_matmul_bench.sh register
+//   ./benchmarks/run_matmul_bench.sh packing
 
 #include "my_matrix.hpp"
 #include "my_tensor.hpp"
@@ -169,6 +173,21 @@ void BM_RegisterOptimizedMatmulSquare(benchmark::State& state) {
     set_matmul_counters(state, n);
 }
 
+void BM_RegisterOptimizedMatmulPackingSquare(benchmark::State& state) {
+    const std::size_t n = static_cast<std::size_t>(state.range(0));
+
+    const learn::Matrix<float> a = make_square_matrix(n, 0.001f, 0.1f);
+    const learn::Matrix<float> b = make_square_matrix(n, 0.002f, -0.05f);
+
+    for (auto _ : state) {
+        learn::Matrix<float> result = a.register_optimized_matmul_packing(b);
+        benchmark::DoNotOptimize(result);
+        benchmark::ClobberMemory();
+    }
+
+    set_matmul_counters(state, n);
+}
+
 void AllMatmulSizeArgs(benchmark::internal::Benchmark* b) {
     for (int n : kAllSizes) {
         b->Arg(n);
@@ -243,6 +262,10 @@ BENCHMARK(BM_MultithreadedMatmulSquare)
     ->UseRealTime();
 
 BENCHMARK(BM_RegisterOptimizedMatmulSquare)
+    ->Apply(AllMatmulSizeArgs)
+    ->Unit(benchmark::kMillisecond);
+
+BENCHMARK(BM_RegisterOptimizedMatmulPackingSquare)
     ->Apply(AllMatmulSizeArgs)
     ->Unit(benchmark::kMillisecond);
 
