@@ -495,6 +495,103 @@ void test_register_packing_matmul_zero_matrix() {
     check_register_packing_matches_matmul(a, b);
 }
 
+void test_register_packing_matmul_odd_rows() {
+    // Tile height is 2; odd row count leaves a partial bottom tile.
+    learn::Matrix<double> a(3, 4, {
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
+    });
+    learn::Matrix<double> b(4, 4, {
+        1, 0, 0, 1,
+        0, 1, 1, 0,
+        2, 0, 1, 0,
+        0, 2, 0, 1,
+    });
+    check_register_packing_matches_matmul(a, b);
+}
+
+void test_register_packing_matmul_cols_not_multiple_of_four() {
+    // Packing pads B panels to width 4; leftover columns must still match matmul.
+    learn::Matrix<double> a(4, 3, {
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+        10, 11, 12,
+    });
+    learn::Matrix<double> b(3, 5, {
+        1, 0, 2, 1, 0,
+        0, 1, 1, 0, 2,
+        2, 1, 0, 1, 1,
+    });
+    check_register_packing_matches_matmul(a, b);
+}
+
+void test_register_packing_matmul_cols_exactly_four() {
+    // Full panels only — no leftover padding path.
+    learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
+    learn::Matrix<double> b(3, 4, {
+        1, 0, 2, 1,
+        0, 1, 1, 0,
+        2, 1, 0, 3,
+    });
+    check_register_packing_matches_matmul(a, b);
+}
+
+void test_register_packing_matmul_rectangular_shapes() {
+    learn::Matrix<double> a(1, 4, {1, 2, 3, 4});
+    learn::Matrix<double> b(4, 3, {
+        1, 0, 2,
+        0, 1, 0,
+        2, 2, 1,
+        3, 1, 4,
+    });
+    check_register_packing_matches_matmul(a, b);
+
+    learn::Matrix<double> c(4, 1, {1, 2, 3, 4});
+    learn::Matrix<double> d(1, 3, {5, 6, 7});
+    check_register_packing_matches_matmul(c, d);
+}
+
+void test_register_packing_matmul_larger_matrix() {
+    // Mix of full panels and leftovers (7x5 @ 5x6).
+    learn::Matrix<double> a(7, 5);
+    learn::Matrix<double> b(5, 6);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a.data()[i] = static_cast<double>(i) - 3.0;
+    }
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        b.data()[i] = static_cast<double>(i % 7) + 0.25;
+    }
+    check_register_packing_matches_matmul(a, b);
+}
+
+void test_register_packing_matmul_matches_register_optimized() {
+    learn::Matrix<double> a(5, 7);
+    learn::Matrix<double> b(7, 5);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        a.data()[i] = static_cast<double>(i) * 0.5 - 1.0;
+    }
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        b.data()[i] = static_cast<double>((i * 3) % 11) - 2.0;
+    }
+    const learn::Matrix<double> tiled = a.register_optimized_matmul(b);
+    const learn::Matrix<double> packed = a.register_optimized_matmul_packing(b);
+    CHECK(matrices_equal(tiled, packed));
+}
+
+void test_register_packing_matmul_shape_mismatch() {
+    learn::Matrix<double> a(2, 3);
+    learn::Matrix<double> b(2, 2);
+    bool threw = false;
+    try {
+        (void)a.register_optimized_matmul_packing(b);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
+}
+
 void test_default_construct() {
     learn::Matrix<double> m;
     CHECK(m.rows() == 0);
@@ -780,6 +877,13 @@ int main() {
     run_test("test_register_packing_matmul_identity", test_register_packing_matmul_identity);
     run_test("test_register_packing_matmul_single_element", test_register_packing_matmul_single_element);
     run_test("test_register_packing_matmul_zero_matrix", test_register_packing_matmul_zero_matrix);
+    run_test("test_register_packing_matmul_odd_rows", test_register_packing_matmul_odd_rows);
+    run_test("test_register_packing_matmul_cols_not_multiple_of_four", test_register_packing_matmul_cols_not_multiple_of_four);
+    run_test("test_register_packing_matmul_cols_exactly_four", test_register_packing_matmul_cols_exactly_four);
+    run_test("test_register_packing_matmul_rectangular_shapes", test_register_packing_matmul_rectangular_shapes);
+    run_test("test_register_packing_matmul_larger_matrix", test_register_packing_matmul_larger_matrix);
+    run_test("test_register_packing_matmul_matches_register_optimized", test_register_packing_matmul_matches_register_optimized);
+    run_test("test_register_packing_matmul_shape_mismatch", test_register_packing_matmul_shape_mismatch);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 
