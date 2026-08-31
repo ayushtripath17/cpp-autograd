@@ -210,7 +210,6 @@ public:
         Matrix product(rows_, other.cols_);
 
         for (std::size_t ii = 0; ii < rows_; ii += 2) {
-            
             for (std::size_t kk = 0; kk < other.cols_; kk += 4) {
                 
                 T temp [8];
@@ -247,6 +246,58 @@ public:
                     for (std::size_t i = 0; i < 2; i++) {
                         for (std::size_t k = 0; k < 4; k++) {
                             product.data_[(i + ii) * other.cols_ + (k + kk)] = temp[i * 4 + k];
+                        }
+                    }
+                }
+            }
+        }
+        
+        return product;
+    }
+
+    Matrix register_optimized_matmul_packing(const Matrix& other) const {
+        if (this->cols_ != other.rows_) {
+            throw std::invalid_argument("Invalid dimensions.");
+        }
+
+        Matrix product(rows_, other.cols_);
+        PackedMatrix packed = other.adjust_ordering();
+        Matrix& b = packed.B;
+
+        for (std::size_t ii = 0; ii < rows_; ii += 2) {
+            for (std::size_t kk = 0; kk < b.rows_; kk++) {
+                T temp [8];
+                for (std::size_t i = 0; i < 8; i++) {
+                    temp[i] = T();
+                }
+                if (ii + 2 > rows_ || (kk + 1 == b.rows_ && packed.left_over != 0)) {
+                    std::size_t row_bound = std::min(rows_, ii + 2);
+                    for (std::size_t jj = 0; jj < cols_; jj++) {
+                        for (std::size_t i = ii; i < row_bound; i++) {
+                            for (std::size_t k = 0; k < 4; k++) {
+                                temp[(i - ii) * 4 + k] += data_[i * cols_ + jj] * b.data_[kk * b.cols_ + jj * 4 + k];
+                            }
+                        }
+                    }
+                    for (std::size_t i = ii; i < row_bound; i++) {
+                        for (std::size_t k = 0; k < 4; k++) {
+                            if (kk + 1 == b.rows_ && k >= packed.left_over && packed.left_over != 0) {
+                                break;
+                            }
+                            product.data_[i * other.cols_ + (k + (kk * 4))] = temp[(i - ii) * 4 + k];
+                        }
+                    }
+                } else {
+                    for (std::size_t jj = 0; jj < cols_; jj++) {
+                        for (std::size_t i = 0; i < 2; i++) {
+                            for (std::size_t k = 0; k < 4; k++) {
+                                temp[i * 4 + k] += data_[(i + ii) * cols_ + jj] * b.data_[kk * b.cols_ + jj * 4 + k];
+                            }
+                        }
+                    }
+                    for (std::size_t i = 0; i < 2; i++) {
+                        for (std::size_t k = 0; k < 4; k++) {
+                            product.data_[(i + ii) * other.cols_ + (k + kk * 4)] = temp[i * 4 + k];
                         }
                     }
                 }
