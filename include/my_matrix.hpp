@@ -287,6 +287,12 @@ public:
     }
 
 private:
+
+    struct PackedMatrix {
+        Matrix B;
+        std::size_t left_over;
+    };
+
     Vector<T> data_;
     std::size_t rows_;
     std::size_t cols_;
