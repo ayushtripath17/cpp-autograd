@@ -450,6 +450,51 @@ void test_register_optimized_matmul_shape_mismatch() {
     CHECK(threw);
 }
 
+void check_register_packing_matches_matmul(const learn::Matrix<double>& a,
+                                           const learn::Matrix<double>& b) {
+    const learn::Matrix<double> expected = a.matmul(b);
+    const learn::Matrix<double> actual = a.register_optimized_matmul_packing(b);
+    CHECK(actual.rows() == expected.rows());
+    CHECK(actual.cols() == expected.cols());
+    CHECK(matrices_equal(actual, expected));
+}
+
+void test_register_packing_matmul_known_result() {
+    learn::Matrix<double> a(2, 3, {1, 2, 3, 4, 5, 6});
+    learn::Matrix<double> b(3, 2, {7, 8, 9, 10, 11, 12});
+    learn::Matrix<double> c = a.register_optimized_matmul_packing(b);
+
+    CHECK(c.rows() == 2);
+    CHECK(c.cols() == 2);
+    CHECK(c(0, 0) == 58);
+    CHECK(c(0, 1) == 64);
+    CHECK(c(1, 0) == 139);
+    CHECK(c(1, 1) == 154);
+}
+
+void test_register_packing_matmul_identity() {
+    learn::Matrix<double> a(2, 2, {1, 2, 3, 4});
+    learn::Matrix<double> i(2, 2, {1, 0, 0, 1});
+    learn::Matrix<double> c = a.register_optimized_matmul_packing(i);
+
+    CHECK(c(0, 0) == 1);
+    CHECK(c(0, 1) == 2);
+    CHECK(c(1, 0) == 3);
+    CHECK(c(1, 1) == 4);
+}
+
+void test_register_packing_matmul_single_element() {
+    learn::Matrix<double> a(1, 1, {6.0});
+    learn::Matrix<double> b(1, 1, {7.0});
+    check_register_packing_matches_matmul(a, b);
+}
+
+void test_register_packing_matmul_zero_matrix() {
+    learn::Matrix<double> a(2, 3, {0, 0, 0, 0, 0, 0});
+    learn::Matrix<double> b(3, 2, {1, 2, 3, 4, 5, 6});
+    check_register_packing_matches_matmul(a, b);
+}
+
 void test_default_construct() {
     learn::Matrix<double> m;
     CHECK(m.rows() == 0);
@@ -731,6 +776,10 @@ int main() {
     run_test("test_register_optimized_matmul_zero_matrix", test_register_optimized_matmul_zero_matrix);
     run_test("test_register_optimized_matmul_larger_matrix", test_register_optimized_matmul_larger_matrix);
     run_test("test_register_optimized_matmul_shape_mismatch", test_register_optimized_matmul_shape_mismatch);
+    run_test("test_register_packing_matmul_known_result", test_register_packing_matmul_known_result);
+    run_test("test_register_packing_matmul_identity", test_register_packing_matmul_identity);
+    run_test("test_register_packing_matmul_single_element", test_register_packing_matmul_single_element);
+    run_test("test_register_packing_matmul_zero_matrix", test_register_packing_matmul_zero_matrix);
 
     std::cout << "\n" << tests_run << " checks, " << tests_failed << " failed.\n";
 
