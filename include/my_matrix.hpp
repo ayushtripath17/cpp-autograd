@@ -316,6 +316,39 @@ private:
             }
         }
     }
+
+    PackedMatrix adjust_ordering() const {
+        std::size_t rows;
+        if (this->cols_ % 4 == 0) rows = this->cols_ / 4;
+        else rows = this->cols_ / 4 + 1;
+
+        std::size_t columns = 4 * this->rows_;
+        Matrix adjusted(rows, columns);
+        std::size_t leftover = this->cols_ % 4;
+        std::size_t counter = 0;
+        for (std::size_t ii = 0; ii < this->cols_; ii += 4) {
+            if (ii + 4 > this->cols_) {
+                for (std::size_t jj = 0; jj < this->rows_; jj++) {
+                    for (std::size_t k = ii; k < ii + 4; k++) {
+                        if (k - ii < leftover) {
+                            adjusted.data_[counter] = this->data_[jj * this->cols_ + k];
+                        } else {
+                            adjusted.data_[counter] = T();
+                        }
+                        counter++;
+                    } 
+                }
+            } else {
+                for (std::size_t jj = 0; jj < this->rows_; jj++) {
+                    for (std::size_t k = ii; k < ii + 4; k++) {
+                        adjusted.data_[counter] = this->data_[jj * this->cols_ + k];
+                        counter++;
+                    } 
+                }
+            }
+        }
+        return PackedMatrix(adjusted, leftover);
+    }
 };
 
 }  // namespace learn
