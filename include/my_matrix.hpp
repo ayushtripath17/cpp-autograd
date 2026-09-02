@@ -264,14 +264,14 @@ public:
         PackedMatrix packed = other.adjust_ordering();
         Matrix& b = packed.B;
 
-        for (std::size_t ii = 0; ii < rows_; ii += 2) {
+        for (std::size_t ii = 0; ii < rows_; ii += 4) {
             for (std::size_t kk = 0; kk < b.rows_; kk++) {
-                T temp [8];
-                for (std::size_t i = 0; i < 8; i++) {
+                T temp [16];
+                for (std::size_t i = 0; i < 16; i++) {
                     temp[i] = T();
                 }
-                if (ii + 2 > rows_ || (kk + 1 == b.rows_ && packed.left_over != 0)) {
-                    std::size_t row_bound = std::min(rows_, ii + 2);
+                if (ii + 4 > rows_ || (kk + 1 == b.rows_ && packed.left_over != 0)) {
+                    std::size_t row_bound = std::min(rows_, ii + 4);
                     for (std::size_t jj = 0; jj < cols_; jj++) {
                         for (std::size_t i = ii; i < row_bound; i++) {
                             for (std::size_t k = 0; k < 4; k++) {
@@ -289,13 +289,13 @@ public:
                     }
                 } else {
                     for (std::size_t jj = 0; jj < cols_; jj++) {
-                        for (std::size_t i = 0; i < 2; i++) {
+                        for (std::size_t i = 0; i < 4; i++) {
                             for (std::size_t k = 0; k < 4; k++) {
                                 temp[i * 4 + k] += data_[(i + ii) * cols_ + jj] * b.data_[kk * b.cols_ + jj * 4 + k];
                             }
                         }
                     }
-                    for (std::size_t i = 0; i < 2; i++) {
+                    for (std::size_t i = 0; i < 4; i++) {
                         for (std::size_t k = 0; k < 4; k++) {
                             product.data_[(i + ii) * other.cols_ + (k + kk * 4)] = temp[i * 4 + k];
                         }
@@ -398,7 +398,7 @@ private:
                 }
             }
         }
-        return PackedMatrix(adjusted, leftover);
+        return PackedMatrix{std::move(adjusted), leftover};
     }
 };
 
