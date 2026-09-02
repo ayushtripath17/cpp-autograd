@@ -266,44 +266,43 @@ public:
 
         for (std::size_t ii = 0; ii < rows_; ii += 4) {
             for (std::size_t kk = 0; kk < b.rows_; kk++) {
-                T temp [16];
-                for (std::size_t i = 0; i < 16; i++) {
+                T temp [32];
+                for (std::size_t i = 0; i < 32; i++) {
                     temp[i] = T();
                 }
                 if (ii + 4 > rows_ || (kk + 1 == b.rows_ && packed.left_over != 0)) {
                     std::size_t row_bound = std::min(rows_, ii + 4);
                     for (std::size_t jj = 0; jj < cols_; jj++) {
                         for (std::size_t i = ii; i < row_bound; i++) {
-                            for (std::size_t k = 0; k < 4; k++) {
-                                temp[(i - ii) * 4 + k] += data_[i * cols_ + jj] * b.data_[kk * b.cols_ + jj * 4 + k];
+                            for (std::size_t k = 0; k < 8; k++) {
+                                temp[(i - ii) * 8 + k] += data_[i * cols_ + jj] * b.data_[kk * b.cols_ + jj * 8 + k];
                             }
                         }
                     }
                     for (std::size_t i = ii; i < row_bound; i++) {
-                        for (std::size_t k = 0; k < 4; k++) {
+                        for (std::size_t k = 0; k < 8; k++) {
                             if (kk + 1 == b.rows_ && k >= packed.left_over && packed.left_over != 0) {
                                 break;
                             }
-                            product.data_[i * other.cols_ + (k + (kk * 4))] = temp[(i - ii) * 4 + k];
+                            product.data_[i * other.cols_ + (k + (kk * 8))] = temp[(i - ii) * 8 + k];
                         }
                     }
                 } else {
                     for (std::size_t jj = 0; jj < cols_; jj++) {
                         for (std::size_t i = 0; i < 4; i++) {
-                            for (std::size_t k = 0; k < 4; k++) {
-                                temp[i * 4 + k] += data_[(i + ii) * cols_ + jj] * b.data_[kk * b.cols_ + jj * 4 + k];
+                            for (std::size_t k = 0; k < 8; k++) {
+                                temp[i * 8 + k] += data_[(i + ii) * cols_ + jj] * b.data_[kk * b.cols_ + jj * 8 + k];
                             }
                         }
                     }
                     for (std::size_t i = 0; i < 4; i++) {
-                        for (std::size_t k = 0; k < 4; k++) {
-                            product.data_[(i + ii) * other.cols_ + (k + kk * 4)] = temp[i * 4 + k];
+                        for (std::size_t k = 0; k < 8; k++) {
+                            product.data_[(i + ii) * other.cols_ + (k + kk * 8)] = temp[i * 8 + k];
                         }
                     }
                 }
             }
         }
-        
         return product;
     }
 
@@ -370,17 +369,17 @@ private:
 
     PackedMatrix adjust_ordering() const {
         std::size_t rows;
-        if (this->cols_ % 4 == 0) rows = this->cols_ / 4;
-        else rows = this->cols_ / 4 + 1;
+        if (this->cols_ % 8 == 0) rows = this->cols_ / 8;
+        else rows = this->cols_ / 8 + 1;
 
-        std::size_t columns = 4 * this->rows_;
+        std::size_t columns = 8 * this->rows_;
         Matrix adjusted(rows, columns);
-        std::size_t leftover = this->cols_ % 4;
+        std::size_t leftover = this->cols_ % 8;
         std::size_t counter = 0;
-        for (std::size_t ii = 0; ii < this->cols_; ii += 4) {
-            if (ii + 4 > this->cols_) {
+        for (std::size_t ii = 0; ii < this->cols_; ii += 8) {
+            if (ii + 8 > this->cols_) {
                 for (std::size_t jj = 0; jj < this->rows_; jj++) {
-                    for (std::size_t k = ii; k < ii + 4; k++) {
+                    for (std::size_t k = ii; k < ii + 8; k++) {
                         if (k - ii < leftover) {
                             adjusted.data_[counter] = this->data_[jj * this->cols_ + k];
                         } else {
@@ -391,7 +390,7 @@ private:
                 }
             } else {
                 for (std::size_t jj = 0; jj < this->rows_; jj++) {
-                    for (std::size_t k = ii; k < ii + 4; k++) {
+                    for (std::size_t k = ii; k < ii + 8; k++) {
                         adjusted.data_[counter] = this->data_[jj * this->cols_ + k];
                         counter++;
                     } 
